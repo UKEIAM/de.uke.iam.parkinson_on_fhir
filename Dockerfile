@@ -1,4 +1,4 @@
-FROM maven:3.8.6-openjdk-17 AS MarvenWarBuilder
+FROM maven:3.8-openjdk-17 AS MarvenWarBuilder
 COPY pom.xml /parkinson_on_fhir/
 COPY src /parkinson_on_fhir/src/
 WORKDIR /parkinson_on_fhir/
