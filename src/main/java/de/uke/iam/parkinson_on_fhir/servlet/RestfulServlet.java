@@ -11,6 +11,7 @@ import ca.uhn.fhir.narrative.INarrativeGenerator;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.RestfulServer;
 import ca.uhn.fhir.rest.server.interceptor.ResponseHighlighterInterceptor;
+import ca.uhn.fhir.rest.openapi.OpenApiInterceptor;
 
 /**
  * This servlet is the actual FHIR server itself
@@ -54,6 +55,11 @@ public class RestfulServlet extends RestfulServer {
 		 */
 		registerInterceptor(new ResponseHighlighterInterceptor());
 		
+		/*
+		 * Show OpenAPI documentation under "/api-docs"
+		 */
+		OpenApiInterceptor openApiInterceptor = new OpenApiInterceptor();
+      	registerInterceptor(openApiInterceptor);
 	}
 
 }

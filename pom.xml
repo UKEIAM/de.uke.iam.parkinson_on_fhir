@@ -31,17 +31,23 @@
 			<version>${hapifhir_version}</version>
 		</dependency>
 
-      <!-- At least one "structures" JAR must also be included -->
+		<!-- At least one "structures" JAR must also be included -->
 		<dependency>
 			<groupId>ca.uhn.hapi.fhir</groupId>
 			<artifactId>hapi-fhir-structures-dstu3</artifactId>
 			<version>${hapifhir_version}</version>
 		</dependency>
-      <dependency>
-         <groupId>ca.uhn.hapi.fhir</groupId>
-         <artifactId>hapi-fhir-structures-r4</artifactId>
-         <version>${hapifhir_version}</version>
-      </dependency>
+		<dependency>
+			<groupId>ca.uhn.hapi.fhir</groupId>
+			<artifactId>hapi-fhir-structures-r4</artifactId>
+			<version>${hapifhir_version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>ca.uhn.hapi.fhir</groupId>
+			<artifactId>hapi-fhir-server-openapi</artifactId>
+			<version>${hapifhir_version}</version>
+		</dependency>
 
 		<!-- This dependency is used for the "FHIR Tester" web app overlay -->
 		<dependency>
@@ -49,14 +55,14 @@
 			<artifactId>hapi-fhir-testpage-overlay</artifactId>
 			<version>${hapifhir_version}</version>
 			<type>war</type>
-			<scope>provided</scope>		
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>ca.uhn.hapi.fhir</groupId>
 			<artifactId>hapi-fhir-testpage-overlay</artifactId>
 			<version>${hapifhir_version}</version>
 			<classifier>classes</classifier>
-			<scope>provided</scope>		
+			<scope>provided</scope>
 		</dependency>
 
 		<!-- 
@@ -101,18 +107,18 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-		
+
 
 	</dependencies>
 
 	<build>
-		
+
 		<!-- 
 		Tells Maven to name the generated WAR file as
 		parkinson-fhir.war
 		-->
 		<finalName>parkinson-fhir</finalName>
-		
+
 		<!-- 
 		The following is not required for the application to build, but
 		allows you to test it by issuing "mvn jetty:run" from the command
@@ -122,12 +128,12 @@
 			<plugins>
 				<plugin>
 					<groupId>org.eclipse.jetty</groupId>
-               <artifactId>jetty-maven-plugin</artifactId>
-               <version>9.4.7.v20170914</version>
+					<artifactId>jetty-maven-plugin</artifactId>
+					<version>9.4.7.v20170914</version>
 				</plugin>
 			</plugins>
 		</pluginManagement>
-	
+
 		<plugins>
 			<!-- 
 			Tell Maven which Java source version you want to use
@@ -141,7 +147,7 @@
 					<target>1.8</target>
 				</configuration>
 			</plugin>
-			
+
 			<!-- 
 			The configuration here tells the WAR plugin to include the FHIR Tester
 			overlay. You can omit it if you are not using that feature.
