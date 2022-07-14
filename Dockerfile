@@ -23,3 +23,9 @@ RUN mvn package
 # Create the container for deployment
 FROM tomcat:9.0.64-jdk11-corretto
 COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATALINA_HOME/webapps/parkinson-fhir.war
+
+# Enable manager
+RUN mv /usr/local/tomcat/webapps.dist/host-manager /usr/local/tomcat/webapps/host-manager \
+  && mv /usr/local/tomcat/webapps.dist/manager /usr/local/tomcat/webapps/manager
+COPY config/usr/local/tomcat/conf/tomcat-users.xml /usr/local/tomcat/conf/tomcat-users.xml
+COPY config/usr/local/tomcat/webapps/manager/META-INF/context.xml /usr/local/tomcat/webapps/manager/META-INF/context.xml
