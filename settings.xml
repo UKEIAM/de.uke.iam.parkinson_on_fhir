@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.1.0 http://maven.apache.org/xsd/settings-1.1.0.xsd" xmlns="http://maven.apache.org/SETTINGS/1.1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <!-- A matter of rights... -->
+    <localRepository>${user.home}/.m2-repository</localRepository>
+    <servers>
+        <server>
+            <id>iam-maven</id>
+            <username>${env.MAVEN_USER}</username>
+            <password>${env.MAVEN_PASSWORD}</password>
+        </server>
+        <server>
+            <id>iam-maven-snapshots</id>
+            <username>${env.MAVEN_USER}</username>
+            <password>${env.MAVEN_PASSWORD}</password>
+        </server>
+        <server>
+            <id>iam-mirror</id>
+            <username>${env.MAVEN_USER}</username>
+            <password>${env.MAVEN_PASSWORD}</password>
+        </server>
+    </servers>
+    <mirrors>
+        <mirror>
+            <id>iam-mirror</id>
+            <name>IAM Mirror Repository</name>
+            <url>https://nexus.fordo.de/repository/iam-all</url>
+            <mirrorOf>*</mirrorOf>
+        </mirror>
+    </mirrors>
+    <profiles>
+        <profile>
+            <id>iam-maven</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                    <id>iam-maven</id>
+                    <url>https://nexus.fordo.de/repository/maven-releases</url>
+                </repository>
+                <repository>
+                    <releases>
+                        <enabled>false</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                    <id>iam-maven-snapshots</id>
+                    <url>https://nexus.fordo.de/repository/maven-snapshots</url>
+                </repository>
+            </repositories>
+        </profile>
+    </profiles>
+</settings>

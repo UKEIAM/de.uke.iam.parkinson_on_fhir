@@ -1,29 +1,41 @@
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>test</groupId>
-	<artifactId>hapi-fhirstarters-rest-server-skeleton</artifactId>
-	<version>5.0.0</version>
+	<groupId>de.uke.iam</groupId>
+	<artifactId>parkinson_on_fhir</artifactId>
+	<version>1.0.0</version>
 	<packaging>war</packaging>
 
 	<name>Parkinson on FHIR</name>
 
+	<parent>
+		<artifactId>parent</artifactId>
+		<groupId>de.uke.iam</groupId>
+		<version>2.0.1-SNAPSHOT</version>
+	</parent>
+
 	<repositories>
 		<repository>
-			<id>oss-snapshots</id>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
-			<url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+			<id>iam-maven</id>
+			<url>https://nexus.fordo.de/repository/maven-releases/</url>
 		</repository>
 	</repositories>
 
 	<properties>
+		<!-- HAPI 6 requires at least Java 11. -->
 		<hapifhir_version>6.0.0</hapifhir_version>
+		<maven.compiler.source>11</maven.compiler.source>
+		<maven.compiler.target>11</maven.compiler.target>
 	</properties>
 
-	<dependencies>
+	<distributionManagement>
+		<snapshotRepository>
+			<id>iam-maven</id>
+			<url>https://nexus.fordo.de/repository/maven-snapshots/</url>
+		</snapshotRepository>
+	</distributionManagement>
 
+	<dependencies>
 		<!-- This dependency includes the core HAPI-FHIR classes -->
 		<dependency>
 			<groupId>ca.uhn.hapi.fhir</groupId>
@@ -107,44 +119,36 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-
-
 	</dependencies>
 
 	<build>
-
 		<!-- 
 		Tells Maven to name the generated WAR file as
 		parkinson-fhir.war
 		-->
 		<finalName>parkinson-fhir</finalName>
 
-		<!-- 
-		The following is not required for the application to build, but
-		allows you to test it by issuing "mvn jetty:run" from the command
-		line. 
-		-->
-		<pluginManagement>
-			<plugins>
-				<plugin>
-					<groupId>org.eclipse.jetty</groupId>
-					<artifactId>jetty-maven-plugin</artifactId>
-					<version>9.4.7.v20170914</version>
-				</plugin>
-			</plugins>
-		</pluginManagement>
-
 		<plugins>
 			<!-- 
 			Tell Maven which Java source version you want to use
 			-->
 			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.3</version>
+				<version>3.8.1</version>
 				<configuration>
-					<source>1.8</source>
-					<target>1.8</target>
+					<source>11</source>
+					<target>11</target>
+				</configuration>
+			</plugin>
+
+			<!-- 
+			We need to disable animal-sniffer from the parent as it is only compatible with Java <= 8
+			-->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>animal-sniffer-maven-plugin</artifactId>
+				<configuration>
+					<skip>true</skip>
 				</configuration>
 			</plugin>
 
