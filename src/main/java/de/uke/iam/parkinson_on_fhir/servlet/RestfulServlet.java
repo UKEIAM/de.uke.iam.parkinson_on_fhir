@@ -3,7 +3,6 @@ package de.uke.iam.parkinson_on_fhir.servlet;
 import java.util.ArrayList;
 import java.util.List;
 
-import de.uke.iam.parkinson_on_fhir.provider.OrganizationResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.narrative.DefaultThymeleafNarrativeGenerator;
@@ -39,7 +38,6 @@ public class RestfulServlet extends RestfulServer {
 		 */
 		List<IResourceProvider> providers = new ArrayList<IResourceProvider>();
 		providers.add(new PatientResourceProvider());
-		providers.add(new OrganizationResourceProvider());
 		setResourceProviders(providers);
 		
 		/*

@@ -14,7 +14,7 @@
 		</init-param>
 		<init-param>
 			<param-name>contextConfigLocation</param-name>
-			<param-value>de.uke.iam.parkinson_on_fire.config.FhirTesterConfig</param-value>
+			<param-value>de.uke.iam.fhir.config.FhirTesterConfig</param-value>
 		</init-param>
 		<load-on-startup>2</load-on-startup>
 	</servlet>
@@ -28,7 +28,7 @@
 	-->
 	<servlet>
 		<servlet-name>fhirServlet</servlet-name>
-		<servlet-class>de.uke.iam.parkinson_on_fire.servlet.RestfulServlet</servlet-class>
+		<servlet-class>de.uke.iam.parkinson_on_fhir.servlet.RestfulServlet</servlet-class>
 		<load-on-startup>1</load-on-startup>
 	</servlet>
 	<servlet-mapping>
