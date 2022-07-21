@@ -116,6 +116,17 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
+
+		<!-- Needed to access the database -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+		</dependency>
+
+		<dependency>
+			<artifactId>jooq</artifactId>
+			<groupId>org.jooq</groupId>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -166,7 +177,49 @@
 					</overlays>
 				</configuration>
 			</plugin>
+
+			<!-- Derive the classes automatically from the schema -->
+			<plugin>
+				<groupId>org.jooq</groupId>
+				<artifactId>jooq-codegen-maven</artifactId>
+				<version>${version.jooq}</version>
+
+				<!-- The plugin should hook into the generate goal -->
+				<executions>
+					<execution>
+					<goals>
+						<goal>generate</goal>
+					</goals>
+					</execution>
+				</executions>
+
+				<!-- Specify the plugin configuration.
+					The configuration format is the same as for the standalone code generator -->
+				<configuration>
+
+					<!-- JDBC connection parameters -->
+					<jdbc>
+						<driver>org.postgresql.Driver</driver>
+						<url>jdbc:postgresql://${env.POSTGRES_SERVER}/${env.POSTGRES_DATABASE}</url>
+						<user>${env.POSTGRES_USER}</user>
+						<password>${env.POSTGRES_PASSWORD}</password>
+					</jdbc>
+
+					<!-- Generator parameters -->
+					<generator>
+						<database>
+							<name>org.jooq.meta.postgres.PostgresDatabase</name>
+							<includes>.*</includes>
+							<excludes></excludes>
+							<inputSchema>public</inputSchema>
+						</database>
+						<target>
+							<packageName>de.uke.iam.parkinson_on_fhir.database</packageName>
+							<directory>src/main/java</directory>
+						</target>
+					</generator>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
-
 </project>
