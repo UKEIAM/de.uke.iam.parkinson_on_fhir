@@ -127,6 +127,12 @@
 			<artifactId>jooq</artifactId>
 			<groupId>org.jooq</groupId>
 		</dependency>
+
+		<!-- Logging backend -->
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+        </dependency>
 	</dependencies>
 
 	<build>
