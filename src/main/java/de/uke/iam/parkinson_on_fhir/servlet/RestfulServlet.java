@@ -2,7 +2,6 @@ package de.uke.iam.parkinson_on_fhir.servlet;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 import java.sql.*;
 
 import ca.uhn.fhir.context.FhirContext;
@@ -16,7 +15,7 @@ import org.jooq.SQLDialect;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 
-import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
+import de.uke.iam.parkinson_on_fhir.provider.GroupResourceProvider;
 
 /**
  * This servlet is the actual FHIR server itself
@@ -32,7 +31,7 @@ public class RestfulServlet extends RestfulServer {
 	public RestfulServlet() {
 		super(FhirContext.forDstu3()); // This is an STU3 server
 	}
-	
+
 	/**
 	 * This method is called automatically when the
 	 * servlet is initializing.
@@ -42,10 +41,9 @@ public class RestfulServlet extends RestfulServer {
 		var user = System.getProperty("de.uke.iam.parkinson_on_fhir.user");
 		var password = System.getProperty("de.uke.iam.parkinson_on_fhir.password");
 		var url = String.format(
-			"jdbc:postgresql://%s/%s", 
-			System.getProperty("de.uke.iam.parkinson_on_fhir.postgres_server"), 
-			System.getProperty("de.uke.iam.parkinson_on_fhir.database")
-		);  
+				"jdbc:postgresql://%s/%s",
+				System.getProperty("de.uke.iam.parkinson_on_fhir.postgres_server"),
+				System.getProperty("de.uke.iam.parkinson_on_fhir.database"));
 
 		DSLContext context = null;
 		try {
@@ -53,27 +51,27 @@ public class RestfulServlet extends RestfulServer {
 			Class.forName("org.postgresql.Driver");
 
 			logger.info("Connecting '{}' with user '{}'", url, user);
-            Connection connection = DriverManager.getConnection(url, user, password);
+			Connection connection = DriverManager.getConnection(url, user, password);
 
 			logger.info("Initializing jOOQ");
 			context = DSL.using(connection, SQLDialect.POSTGRES);
 
 			logger.info("Database ready");
-        } catch (Exception e) {
+		} catch (Exception e) {
 			logger.error("Unable to establish database connection: {}", e.toString());
-            return;
-        }
+			return;
+		}
 
 		/*
 		 * Two resource providers are defined. Each one handles a specific
 		 * type of resource.
 		 */
 		List<IResourceProvider> providers = new ArrayList<IResourceProvider>();
-		providers.add(new PatientResourceProvider());
+		providers.add(new GroupResourceProvider(context));
 		setResourceProviders(providers);
-		
+
 		/*
-		 * Use a narrative generator. This is a completely optional step, 
+		 * Use a narrative generator. This is a completely optional step,
 		 * but can be useful as it causes HAPI to generate narratives for
 		 * resources which don't otherwise have one.
 		 */
@@ -84,12 +82,12 @@ public class RestfulServlet extends RestfulServer {
 		 * Use nice coloured HTML when a browser is used to request the content
 		 */
 		registerInterceptor(new ResponseHighlighterInterceptor());
-		
+
 		/*
 		 * Show OpenAPI documentation under "/api-docs"
 		 */
 		OpenApiInterceptor openApiInterceptor = new OpenApiInterceptor();
-      	registerInterceptor(openApiInterceptor);
+		registerInterceptor(openApiInterceptor);
 	}
 
 }
