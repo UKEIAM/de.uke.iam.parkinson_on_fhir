@@ -16,6 +16,7 @@ import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 
 import de.uke.iam.parkinson_on_fhir.provider.GroupResourceProvider;
+import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
 
 /**
  * This servlet is the actual FHIR server itself
@@ -68,6 +69,7 @@ public class RestfulServlet extends RestfulServer {
 		 */
 		List<IResourceProvider> providers = new ArrayList<IResourceProvider>();
 		providers.add(new GroupResourceProvider(context));
+		providers.add(new PatientResourceProvider(context));
 		setResourceProviders(providers);
 
 		/*
