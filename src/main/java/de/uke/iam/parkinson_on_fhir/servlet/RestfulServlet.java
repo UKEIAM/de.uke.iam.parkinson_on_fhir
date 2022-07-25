@@ -16,6 +16,7 @@ import org.jooq.SQLDialect;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 
+import de.uke.iam.parkinson_on_fhir.provider.DeviceResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.GroupResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.ObservationResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
@@ -75,6 +76,7 @@ public class RestfulServlet extends RestfulServer {
 		providers.add(new GroupResourceProvider(context));
 		providers.add(new PatientResourceProvider(context));
 		providers.add(new ObservationResourceProvider(context));
+		providers.add(new DeviceResourceProvider(context));
 		setResourceProviders(providers);
 
 		/*
