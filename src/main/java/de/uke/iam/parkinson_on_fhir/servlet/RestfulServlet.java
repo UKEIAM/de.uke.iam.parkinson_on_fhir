@@ -7,6 +7,7 @@ import java.sql.*;
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.narrative.DefaultThymeleafNarrativeGenerator;
 import ca.uhn.fhir.narrative.INarrativeGenerator;
+import ca.uhn.fhir.rest.server.FifoMemoryPagingProvider;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.RestfulServer;
 import ca.uhn.fhir.rest.server.interceptor.ResponseHighlighterInterceptor;
@@ -16,6 +17,7 @@ import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 
 import de.uke.iam.parkinson_on_fhir.provider.GroupResourceProvider;
+import de.uke.iam.parkinson_on_fhir.provider.ObservationResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
 
 /**
@@ -53,6 +55,8 @@ public class RestfulServlet extends RestfulServer {
 
 			logger.info("Connecting '{}' with user '{}'", url, user);
 			Connection connection = DriverManager.getConnection(url, user, password);
+			// We disable auto-commit as Postgres does not support fetching otherwise
+			connection.setAutoCommit(false);
 
 			logger.info("Initializing jOOQ");
 			context = DSL.using(connection, SQLDialect.POSTGRES);
@@ -70,6 +74,7 @@ public class RestfulServlet extends RestfulServer {
 		List<IResourceProvider> providers = new ArrayList<IResourceProvider>();
 		providers.add(new GroupResourceProvider(context));
 		providers.add(new PatientResourceProvider(context));
+		providers.add(new ObservationResourceProvider(context));
 		setResourceProviders(providers);
 
 		/*
@@ -90,6 +95,14 @@ public class RestfulServlet extends RestfulServer {
 		 */
 		OpenApiInterceptor openApiInterceptor = new OpenApiInterceptor();
 		registerInterceptor(openApiInterceptor);
+
+		/*
+		 * Support paging for long output.
+		 */
+		FifoMemoryPagingProvider pp = new FifoMemoryPagingProvider(256);
+		pp.setDefaultPageSize(50);
+		pp.setMaximumPageSize(100);
+		setPagingProvider(pp);
 	}
 
 }
