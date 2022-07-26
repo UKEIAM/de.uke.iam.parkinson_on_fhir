@@ -75,7 +75,7 @@ public class DeviceResourceProvider implements IResourceProvider {
                 .where(where)
                 .fetch()) {
             var device = new Device();
-            device.setId(record.get(DEVICES.DEVICE).toString());
+            device.setId(record.get(DEVICES.DEVICE));
             device.setDistinctIdentifier(record.get(DEVICES.DESCRIPTION));
             devices.add(device);
         }

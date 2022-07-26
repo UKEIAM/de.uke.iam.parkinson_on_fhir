@@ -27,6 +27,7 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.Record7;
 import org.jooq.TableField;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
@@ -81,17 +82,22 @@ public class ObservationResourceProvider implements IResourceProvider {
         private final int numMeasurements;
         private final InstantType searchTime;
 
-        private Cursor<Record> measurements;
+        private Cursor<Record7<LocalDateTime, Integer, Float, Float, Float, String, String>> measurements;
         private int lastIndex;
 
         private final static TimeZone TIME_ZONE = TimeZone.getTimeZone("UTC");
+        private final static int FETCH_SIZE = 256;
 
         public FetchedObservations(DSLContext connection, Condition where) {
             this.searchTime = InstantType.withCurrentTime();
 
             this.numMeasurements = connection.selectCount().from(MEASUREMENTS).where(where).fetchOne(0,
                     int.class);
-            this.measurements = connection.select().from(MEASUREMENTS).where(where).fetchSize(256).fetchLazy();
+            this.measurements = connection
+                    .select(MEASUREMENTS.TIMESTAMP, MEASUREMENTS.SUBJECT, MEASUREMENTS.X, MEASUREMENTS.Y,
+                            MEASUREMENTS.Z, SENSORS.BODY_PART, SENSORS.DEVICE)
+                    .from(MEASUREMENTS).join(SENSORS)
+                    .on(MEASUREMENTS.SENSOR.eq(SENSORS.SENSOR_ID)).where(where).fetchSize(FETCH_SIZE).fetchLazy();
         }
 
         @Override
@@ -117,6 +123,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             for (var sample : measurements.fetchNext(num_samples)) {
                 LocalDateTime database_timestamp = sample.get(MEASUREMENTS.TIMESTAMP);
                 long subject = (long) sample.get(MEASUREMENTS.SUBJECT);
+                String body_part = sample.get(SENSORS.BODY_PART);
 
                 // Fill the observation with meaningful information
                 var observation = new Observation();
@@ -132,7 +139,8 @@ public class ObservationResourceProvider implements IResourceProvider {
                         ACCELERATION_COMPONENTS[0].createObservationComponent(sample),
                         ACCELERATION_COMPONENTS[1].createObservationComponent(sample),
                         ACCELERATION_COMPONENTS[2].createObservationComponent(sample)));
-
+                observation.setDevice(new Reference(new IdType("Device", sample.get(SENSORS.DEVICE))));
+                observation.setBodySite(new CodeableConcept(new Coding("custom", body_part, body_part)));
                 loaded_measurements.add(observation);
             }
 
