@@ -11,10 +11,14 @@ import org.hl7.fhir.r4.model.Observation.ObservationComponentComponent;
 import org.hl7.fhir.r4.model.Observation.ObservationStatus;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IPrimitiveType;
+import org.hl7.fhir.r4.model.Annotation;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.r4.model.IdType;
 import org.hl7.fhir.r4.model.InstantType;
+import org.hl7.fhir.r4.model.Period;
+import org.hl7.fhir.r4.model.MarkdownType;
+import org.hl7.fhir.r4.model.Observation.ObservationReferenceRangeComponent;
 
 import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
 import ca.uhn.fhir.rest.annotation.*;
@@ -28,6 +32,7 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Record7;
+import org.jooq.Record15;
 import org.jooq.TableField;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
@@ -57,7 +62,7 @@ public class ObservationResourceProvider implements IResourceProvider {
         private int lastIndex;
 
         /**
-         * 
+         * Initialize the underlying constants.
          */
         protected FetchedObservations(int numMeasurements, Coding category) {
             this.searchTime = InstantType.withCurrentTime();
@@ -111,6 +116,10 @@ public class ObservationResourceProvider implements IResourceProvider {
         public Integer size() {
             return this.numMeasurements;
         }
+
+        protected static Date castLocalDateTime(LocalDateTime localDateTime) {
+            return Date.from(localDateTime.atZone(ZoneId.systemDefault()).toInstant());
+        }
     }
 
     /**
@@ -152,8 +161,10 @@ public class ObservationResourceProvider implements IResourceProvider {
             ACCELERATION_COMPONENTS[2] = new AccelerationComponent(MEASUREMENTS.Z, "X44", "Acceleration on the Z axis");
         }
 
-        public FetchedAccelerationObservations(DSLContext connection, Condition where) {
-            super(connection.selectCount().from(MEASUREMENTS).where(where).fetchOne(0, int.class),
+        public FetchedAccelerationObservations(DSLContext connection, Integer subject, LocalDateTime start,
+                LocalDateTime end) {
+            super(connection.selectCount().from(MEASUREMENTS).where(buildWhere(subject, start, end)).fetchOne(0,
+                    int.class),
                     new Coding("http://terminology.hl7.org/CodeSystem/observation-category", "procedure",
                             "Procedure"));
 
@@ -161,7 +172,8 @@ public class ObservationResourceProvider implements IResourceProvider {
                     .select(MEASUREMENTS.TIMESTAMP, MEASUREMENTS.SUBJECT, MEASUREMENTS.X, MEASUREMENTS.Y,
                             MEASUREMENTS.Z, SENSORS.BODY_PART, SENSORS.DEVICE)
                     .from(MEASUREMENTS).join(SENSORS)
-                    .on(MEASUREMENTS.SENSOR.eq(SENSORS.SENSOR_ID)).where(where).fetchSize(FETCH_SIZE).fetchLazy();
+                    .on(MEASUREMENTS.SENSOR.eq(SENSORS.SENSOR_ID)).where(buildWhere(subject, start, end))
+                    .fetchSize(FETCH_SIZE).fetchLazy();
         }
 
         @Override
@@ -179,7 +191,7 @@ public class ObservationResourceProvider implements IResourceProvider {
                 observation.setCategory(this.category);
                 observation.setSubject(new Reference(new IdType("Patient", subject)));
                 observation.setEffective(new InstantType(
-                        Date.from(database_timestamp.atZone(ZoneId.systemDefault()).toInstant()),
+                        castLocalDateTime(database_timestamp),
                         TemporalPrecisionEnum.MILLI,
                         TIME_ZONE));
                 observation.setComponent(Arrays.asList(
@@ -192,6 +204,111 @@ public class ObservationResourceProvider implements IResourceProvider {
             }
 
             return loaded_measurements;
+        }
+
+        private static Condition buildWhere(Integer subject, LocalDateTime start, LocalDateTime end) {
+            Condition where = DSL.trueCondition();
+            if (subject != null) {
+                where = where.and(MEASUREMENTS.SUBJECT.eq(subject));
+            }
+            if (start != null) {
+                where = where.and(MEASUREMENTS.TIMESTAMP.ge(start));
+            }
+            if (end != null) {
+                where = where.and(MEASUREMENTS.TIMESTAMP.le(end));
+            }
+            return where;
+        }
+    }
+
+    /**
+     * An fetched set of acceleration measurements.
+     */
+    private static class FetchedRatings extends FetchedObservations {
+
+        private Cursor<Record15<Float, String, Integer, String, Float, Float, String, Integer, LocalDateTime, LocalDateTime, Integer, String, String, String, String>> measurements;
+
+        public FetchedRatings(DSLContext connection, Integer subject, LocalDateTime start, LocalDateTime end) {
+            super(connection.selectCount().from(RATINGS).join(TASKS).on(RATINGS.TASK.eq(TASKS.TASK_ID))
+                    .where(buildWhere(subject, start, end))
+                    .fetchOne(0, int.class),
+                    new Coding("http://terminology.hl7.org/CodeSystem/observation-category", "exam", "Exam"));
+            this.measurements = connection
+                    .select(RATINGS.RATING, RATINGS.COMMENT, RATINGS.SENSOR,
+                            ASSESSMENTS.NAME, ASSESSMENTS.MINIMAL_SEVERENESS, ASSESSMENTS.MAXIMAL_SEVERENESS,
+                            ASSESSMENTS.DESCRIPTION,
+                            TASKS.TASK_ID, TASKS.TASK_START, TASKS.TASK_END, TASKS.SUBJECT,
+                            TASKTYPES.NAME, TASKTYPES.DESCRIPTION,
+                            BODYPARTS.NAME, BODYPARTS.DESCRIPTION)
+                    .from(RATINGS)
+                    .join(ASSESSMENTS).on(RATINGS.ASSESSMENT.eq(ASSESSMENTS.NAME))
+                    .join(TASKS).on(RATINGS.TASK.eq(TASKS.TASK_ID))
+                    .join(TASKTYPES).on(TASKS.TASK_TYPE.eq(TASKTYPES.NAME))
+                    .join(SENSORS).on(RATINGS.SENSOR.eq(SENSORS.SENSOR_ID))
+                    .join(BODYPARTS).on(SENSORS.BODY_PART.eq(BODYPARTS.NAME))
+                    .where(buildWhere(subject, start, end)).fetchSize(FETCH_SIZE).fetchLazy();
+        }
+
+        @Override
+        protected List<IBaseResource> fetchNext(int numSamples) {
+            var loaded_measurements = new ArrayList<IBaseResource>(numSamples);
+            for (var sample : measurements.fetchNext(numSamples)) {
+                var sensor = sample.get(RATINGS.SENSOR);
+                var assessment_name = sample.get(ASSESSMENTS.NAME);
+                var task = sample.get(TASKS.TASK_ID);
+
+                // Fill the observation with meaningful information
+                var observation = new Observation();
+                observation.setId(String.format("%s-%d-%d", assessment_name, sensor, task));
+                observation.setStatus(ObservationStatus.FINAL);
+                observation.setCategory(this.category);
+                observation.setSubject(new Reference(new IdType("Patient", (long) sample.get(TASKS.SUBJECT))));
+                observation.setCode(new CodeableConcept(
+                        new Coding("custom", assessment_name, sample.get(ASSESSMENTS.DESCRIPTION))));
+                observation.setValue(new Quantity(sample.get(RATINGS.RATING)));
+                observation.setBodySite(new CodeableConcept(
+                        new Coding("custom", sample.get(BODYPARTS.NAME), sample.get(BODYPARTS.DESCRIPTION))));
+                observation.setReferenceRange(
+                        Arrays.asList(new ObservationReferenceRangeComponent()
+                                .setLow(new Quantity(sample.get(ASSESSMENTS.MINIMAL_SEVERENESS)))
+                                .setHigh(new Quantity(sample.get(ASSESSMENTS.MAXIMAL_SEVERENESS)))));
+
+                // Specify which task was done by the subject
+                observation.setMethod(new CodeableConcept(
+                        new Coding("custom", sample.get(TASKTYPES.NAME), sample.get(TASKTYPES.DESCRIPTION))));
+
+                // Encode optional comments
+                var note = sample.get(RATINGS.COMMENT);
+                if (note != null && !note.isEmpty()) {
+                    observation.setNote(Arrays.asList(new Annotation(new MarkdownType(note))));
+                }
+
+                // Set the time of the test
+                var duration = new Period().setStart(castLocalDateTime(sample.get(TASKS.TASK_START)));
+                var end = sample.get(TASKS.TASK_END);
+                if (end != null) {
+                    duration = duration.setEnd(castLocalDateTime(end));
+                }
+                observation.setEffective(duration);
+
+                loaded_measurements.add(observation);
+            }
+
+            return loaded_measurements;
+        }
+
+        private static Condition buildWhere(Integer subject, LocalDateTime start, LocalDateTime end) {
+            Condition where = DSL.trueCondition();
+            if (subject != null) {
+                where = where.and(TASKS.SUBJECT.eq(subject));
+            }
+            if (start != null) {
+                where = where.and(TASKS.TASK_START.ge(start));
+            }
+            if (end != null) {
+                where = where.and(TASKS.TASK_END.le(end));
+            }
+            return where;
         }
     }
 
@@ -212,38 +329,41 @@ public class ObservationResourceProvider implements IResourceProvider {
      */
     @Search
     public IBundleProvider search(
+            @RequiredParam(name = Observation.SP_CATEGORY) TokenParam category,
             @OptionalParam(name = Observation.SP_SUBJECT) TokenParam subject,
             @OptionalParam(name = Observation.SP_DATE) DateRangeParam range) {
 
-        Condition condition = DSL.trueCondition();
-
         // Allow searching for subject
+        Integer subject_id = null;
         if (subject != null) {
             var raw_value = subject.getValue();
-            int subject_id;
             try {
                 subject_id = Integer.parseInt(raw_value);
             } catch (NumberFormatException e) {
                 throw new ResourceNotFoundException("Unknown Subject ID");
             }
-            condition = condition.and(MEASUREMENTS.SUBJECT.eq(subject_id));
         }
 
         // Allow searching for ranges
+        LocalDateTime start = null, end = null;
         if (range != null) {
-            Date start = range.getLowerBoundAsInstant();
-            if (start != null) {
-                LocalDateTime casted_start = start.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-                condition = condition.and(MEASUREMENTS.TIMESTAMP.ge(casted_start));
+            Date raw_start = range.getLowerBoundAsInstant();
+            if (raw_start != null) {
+                start = raw_start.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
             }
 
-            Date end = range.getUpperBoundAsInstant();
-            if (end != null) {
-                LocalDateTime casted_end = start.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-                condition = condition.and(MEASUREMENTS.TIMESTAMP.le(casted_end));
+            Date raw_end = range.getUpperBoundAsInstant();
+            if (raw_end != null) {
+                end = raw_end.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
             }
         }
 
-        return new FetchedAccelerationObservations(this.connection, condition);
+        if (category.getValue().compareTo("exam") == 0) {
+            return new FetchedRatings(this.connection, subject_id, start, end);
+        } else if (category.getValue().compareTo("procedure") == 0) {
+            return new FetchedAccelerationObservations(this.connection, subject_id, start, end);
+        } else {
+            throw new ResourceNotFoundException("Plase specify 'exam' or 'procedure' for category");
+        }
     }
 }
