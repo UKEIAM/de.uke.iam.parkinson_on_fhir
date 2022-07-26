@@ -27,31 +27,56 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.TableField;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
 import org.jooq.Cursor;
 
 import static de.uke.iam.parkinson_on_fhir.database.Tables.*;
+import de.uke.iam.parkinson_on_fhir.database.tables.records.MeasurementsRecord;
 
 public class ObservationResourceProvider implements IResourceProvider {
 
     private DSLContext connection;
 
-    public static final CodeableConcept CONCEPT_ACCELEROMETER_X;
-    public static final CodeableConcept CONCEPT_ACCELEROMETER_Y;
-    public static final CodeableConcept CONCEPT_ACCELEROMETER_Z;
-
+    private static final List<CodeableConcept> ACCELERATION_CATEGORY;
+    private static final AccelerationComponent[] ACCELERATION_COMPONENTS;
     static {
-        CONCEPT_ACCELEROMETER_X = new CodeableConcept();
-        CONCEPT_ACCELEROMETER_X.addCoding(new Coding("LOINC", "X42", "Acceleration on the X axis"));
+        ACCELERATION_CATEGORY = Arrays.asList(new CodeableConcept().setCoding(Arrays
+                .asList(new Coding("http://terminology.hl7.org/CodeSystem/observation-category", "procedure",
+                        "Procedure"))));
 
-        CONCEPT_ACCELEROMETER_Y = new CodeableConcept();
-        CONCEPT_ACCELEROMETER_Y.addCoding(new Coding("LOINC", "X43", "Acceleration on the Y axis"));
-
-        CONCEPT_ACCELEROMETER_Z = new CodeableConcept();
-        CONCEPT_ACCELEROMETER_Z.addCoding(new Coding("LOINC", "X44", "Acceleration on the Z axis"));
+        ACCELERATION_COMPONENTS = new AccelerationComponent[3];
+        ACCELERATION_COMPONENTS[0] = new AccelerationComponent(MEASUREMENTS.X, "X42", "Acceleration on the X axis");
+        ACCELERATION_COMPONENTS[1] = new AccelerationComponent(MEASUREMENTS.Y, "X43", "Acceleration on the Y axis");
+        ACCELERATION_COMPONENTS[2] = new AccelerationComponent(MEASUREMENTS.Z, "X44", "Acceleration on the Z axis");
     }
 
+    /**
+     * A utility class allowing easy creation of ObservationComponentComponents for
+     * acceleration data.
+     */
+    private static class AccelerationComponent {
+        private CodeableConcept concept;
+        private TableField<MeasurementsRecord, Float> tableEntry;
+
+        public AccelerationComponent(TableField<MeasurementsRecord, Float> tableEntry, String loinc_code,
+                String description) {
+            this.concept = new CodeableConcept();
+            this.concept.addCoding(new Coding("LOINC", loinc_code, description));
+            this.tableEntry = tableEntry;
+        }
+
+        public ObservationComponentComponent createObservationComponent(Record record) {
+            var value = new ObservationComponentComponent(this.concept);
+            value.setValue(new Quantity(record.get(this.tableEntry)));
+            return value;
+        }
+    }
+
+    /**
+     * An fetched set of acceleration measurements.
+     */
     private static class FetchedObservations implements IBundleProvider {
         private final int numMeasurements;
         private final InstantType searchTime;
@@ -92,28 +117,21 @@ public class ObservationResourceProvider implements IResourceProvider {
             for (var sample : measurements.fetchNext(num_samples)) {
                 LocalDateTime database_timestamp = sample.get(MEASUREMENTS.TIMESTAMP);
                 long subject = (long) sample.get(MEASUREMENTS.SUBJECT);
-                
+
                 // Fill the observation with meaningful information
                 var observation = new Observation();
                 observation.setId(String.format("%s-%d", database_timestamp.toString(), subject));
                 observation.setStatus(ObservationStatus.FINAL);
+                observation.setCategory(ACCELERATION_CATEGORY);
                 observation.setSubject(new Reference(new IdType("Patient", subject)));
                 observation.setEffective(new InstantType(
                         Date.from(database_timestamp.atZone(ZoneId.systemDefault()).toInstant()),
                         TemporalPrecisionEnum.MILLI,
                         TIME_ZONE));
-
-                var values = new ArrayList<ObservationComponentComponent>(3);
-                var xValue = new ObservationComponentComponent(CONCEPT_ACCELEROMETER_X);
-                xValue.setValue(new Quantity(sample.get(MEASUREMENTS.X)));
-                values.add(xValue);
-                var yValue = new ObservationComponentComponent(CONCEPT_ACCELEROMETER_Y);
-                yValue.setValue(new Quantity(sample.get(MEASUREMENTS.Y)));
-                values.add(yValue);
-                var zValue = new ObservationComponentComponent(CONCEPT_ACCELEROMETER_Z);
-                zValue.setValue(new Quantity(sample.get(MEASUREMENTS.Z)));
-                values.add(zValue);
-                observation.setComponent(values);
+                observation.setComponent(Arrays.asList(
+                        ACCELERATION_COMPONENTS[0].createObservationComponent(sample),
+                        ACCELERATION_COMPONENTS[1].createObservationComponent(sample),
+                        ACCELERATION_COMPONENTS[2].createObservationComponent(sample)));
 
                 loaded_measurements.add(observation);
             }
@@ -188,5 +206,4 @@ public class ObservationResourceProvider implements IResourceProvider {
 
         return new FetchedObservations(this.connection, condition);
     }
-
 }
