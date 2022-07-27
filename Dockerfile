@@ -1,8 +1,7 @@
 FROM maven:3.8.6-amazoncorretto-11 AS MarvenWarBuilder
 
-# Copy the source and settings to appropiate locations
+# Copy the settings to appropiate locations
 COPY pom.xml /parkinson_on_fhir/
-COPY src /parkinson_on_fhir/src/
 COPY settings.xml $MAVEN_CONFIG/settings.xml
 
 # Define the database. This values are stored in the container, do not redistribute!
@@ -28,6 +27,11 @@ RUN yum install -y git \
   && rm -rf /var/cache/yum/* \
   && yum clean all
 
+# Download (and cache) all the dependencies
+RUN mvn dependency:resolve-plugins dependency:go-offline
+
+# By now, we finally add the source code and compile everything.
+COPY src /parkinson_on_fhir/src/
 RUN mvn package
 
 # Create the container for deployment
@@ -40,11 +44,11 @@ ARG POSTGRES_PASSWORD
 
 COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATALINA_HOME/webapps/parkinson-fhir.war
 
-# Enable manager
-RUN mv /usr/local/tomcat/webapps.dist/host-manager $CATALINA_HOME/webapps/host-manager \
-  && mv /usr/local/tomcat/webapps.dist/manager $CATALINA_HOME/webapps/manager
-COPY config/usr/local/tomcat/conf/tomcat-users.xml $CATALINA_HOME/conf/tomcat-users.xml
-COPY config/usr/local/tomcat/webapps/manager/META-INF/context.xml $CATALINA_HOME/webapps/manager/META-INF/context.xml
+# To enable manager, please just comment in those values
+# RUN mv /usr/local/tomcat/webapps.dist/host-manager $CATALINA_HOME/webapps/host-manager \
+#  && mv /usr/local/tomcat/webapps.dist/manager $CATALINA_HOME/webapps/manager
+# COPY config/usr/local/tomcat/conf/tomcat-users.xml $CATALINA_HOME/conf/tomcat-users.xml
+# COPY config/usr/local/tomcat/webapps/manager/META-INF/context.xml $CATALINA_HOME/webapps/manager/META-INF/context.xml
 
 # Store the credentials to allow access to the database
 RUN printf '%s\n' "de.uke.iam.parkinson_on_fhir.postgres_server=$POSTGRES_SERVER" "de.uke.iam.parkinson_on_fhir.database=$POSTGRES_DATABASE" "de.uke.iam.parkinson_on_fhir.user=$POSTGRES_USER" "de.uke.iam.parkinson_on_fhir.password=$POSTGRES_PASSWORD" >> $CATALINA_HOME/conf/catalina.properties
