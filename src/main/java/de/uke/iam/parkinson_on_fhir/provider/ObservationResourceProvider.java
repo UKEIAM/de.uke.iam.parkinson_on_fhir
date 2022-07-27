@@ -32,7 +32,7 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Record7;
-import org.jooq.Record15;
+import org.jooq.Record16;
 import org.jooq.TableField;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
@@ -186,7 +186,7 @@ public class ObservationResourceProvider implements IResourceProvider {
 
                 // Fill the observation with meaningful information
                 var observation = new Observation();
-                observation.setId(String.format("%s-%d", database_timestamp.toString(), subject));
+                observation.setId(String.format("A-%s-%d", database_timestamp.toString(), subject));
                 observation.setStatus(ObservationStatus.FINAL);
                 observation.setCategory(this.category);
                 observation.setSubject(new Reference(new IdType("Patient", subject)));
@@ -226,7 +226,7 @@ public class ObservationResourceProvider implements IResourceProvider {
      */
     private static class FetchedRatings extends FetchedObservations {
 
-        private Cursor<Record15<Float, String, Integer, String, Float, Float, String, Integer, LocalDateTime, LocalDateTime, Integer, String, String, String, String>> measurements;
+        private Cursor<Record16<Float, String, Integer, String, Float, Float, String, Integer, LocalDateTime, LocalDateTime, Integer, String, String, String, String, String>> measurements;
 
         public FetchedRatings(DSLContext connection, Integer subject, LocalDateTime start, LocalDateTime end) {
             super(connection.selectCount().from(RATINGS).join(TASKS).on(RATINGS.TASK.eq(TASKS.TASK_ID))
@@ -238,7 +238,7 @@ public class ObservationResourceProvider implements IResourceProvider {
                             ASSESSMENTS.NAME, ASSESSMENTS.MINIMAL_SEVERENESS, ASSESSMENTS.MAXIMAL_SEVERENESS,
                             ASSESSMENTS.DESCRIPTION,
                             TASKS.TASK_ID, TASKS.TASK_START, TASKS.TASK_END, TASKS.SUBJECT,
-                            TASKTYPES.NAME, TASKTYPES.DESCRIPTION,
+                            TASKTYPES.NAME, TASKTYPES.DESCRIPTION, TASKTYPES.UPDRS_CODE,
                             BODYPARTS.NAME, BODYPARTS.DESCRIPTION)
                     .from(RATINGS)
                     .join(ASSESSMENTS).on(RATINGS.ASSESSMENT.eq(ASSESSMENTS.NAME))
@@ -259,23 +259,36 @@ public class ObservationResourceProvider implements IResourceProvider {
 
                 // Fill the observation with meaningful information
                 var observation = new Observation();
-                observation.setId(String.format("%s-%d-%d", assessment_name, sensor, task));
+                observation.setId(String.format("R-%s-%d-%d", assessment_name, sensor, task));
                 observation.setStatus(ObservationStatus.FINAL);
                 observation.setCategory(this.category);
                 observation.setSubject(new Reference(new IdType("Patient", (long) sample.get(TASKS.SUBJECT))));
-                observation.setCode(new CodeableConcept(
-                        new Coding("custom", assessment_name, sample.get(ASSESSMENTS.DESCRIPTION))));
                 observation.setValue(new Quantity(sample.get(RATINGS.RATING)));
-                observation.setBodySite(new CodeableConcept(
-                        new Coding("custom", sample.get(BODYPARTS.NAME), sample.get(BODYPARTS.DESCRIPTION))));
                 observation.setReferenceRange(
                         Arrays.asList(new ObservationReferenceRangeComponent()
                                 .setLow(new Quantity(sample.get(ASSESSMENTS.MINIMAL_SEVERENESS)))
                                 .setHigh(new Quantity(sample.get(ASSESSMENTS.MAXIMAL_SEVERENESS)))));
 
-                // Specify which task was done by the subject
-                observation.setMethod(new CodeableConcept(
-                        new Coding("custom", sample.get(TASKTYPES.NAME), sample.get(TASKTYPES.DESCRIPTION))));
+                // Treat UPDRS and non-UPDRS assessments differently
+                var updrs_code = sample.get(TASKTYPES.UPDRS_CODE);
+                if (updrs_code == null) {
+                    // If no UPDRS rating is given, set the code to specify WHAT symptom that
+                    // assessed ...
+                    observation.setCode(new CodeableConcept(
+                            new Coding("custom", assessment_name, sample.get(ASSESSMENTS.DESCRIPTION))));
+
+                    // ... , at which body part,
+                    observation.setBodySite(new CodeableConcept(
+                            new Coding("custom", sample.get(BODYPARTS.NAME), sample.get(BODYPARTS.DESCRIPTION))));
+
+                    // ... and during which task.
+                    observation.setMethod(new CodeableConcept(
+                            new Coding("custom", sample.get(TASKTYPES.NAME), sample.get(TASKTYPES.DESCRIPTION))));
+                } else {
+                    // TODO: Set appropiate LOINC codes from https://loinc.org/77717-7/
+                    observation.setCode(new CodeableConcept(
+                            new Coding("http://loinc.org", "77717-7", updrs_code)));
+                }
 
                 // Encode optional comments
                 var note = sample.get(RATINGS.COMMENT);
@@ -329,7 +342,7 @@ public class ObservationResourceProvider implements IResourceProvider {
      */
     @Search
     public IBundleProvider search(
-            @RequiredParam(name = Observation.SP_CATEGORY) TokenParam category,
+            @OptionalParam(name = Observation.SP_CATEGORY) TokenParam category,
             @OptionalParam(name = Observation.SP_SUBJECT) TokenParam subject,
             @OptionalParam(name = Observation.SP_DATE) DateRangeParam range) {
 
@@ -358,9 +371,9 @@ public class ObservationResourceProvider implements IResourceProvider {
             }
         }
 
-        if (category.getValue().compareTo("exam") == 0) {
+        if (category != null && category.getValue().compareTo("exam") == 0) {
             return new FetchedRatings(this.connection, subject_id, start, end);
-        } else if (category.getValue().compareTo("procedure") == 0) {
+        } else if (category != null && category.getValue().compareTo("procedure") == 0) {
             return new FetchedAccelerationObservations(this.connection, subject_id, start, end);
         } else {
             throw new ResourceNotFoundException("Plase specify 'exam' or 'procedure' for category");
