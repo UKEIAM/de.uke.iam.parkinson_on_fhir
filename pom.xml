@@ -27,6 +27,9 @@
 		<tomcat.version>9.0.64</tomcat.version>
 		<maven.compiler.source>11</maven.compiler.source>
 		<maven.compiler.target>11</maven.compiler.target>
+
+		<!-- Wether or not generate code from a database -->
+		<skip_code_generation>false</skip_code_generation>
 	</properties>
 
 	<distributionManagement>
@@ -202,7 +205,8 @@
 				<!-- Specify the plugin configuration.
 					The configuration format is the same as for the standalone code generator -->
 				<configuration>
-
+					<skip>${skip_code_generation}</skip>
+		
 					<!-- JDBC connection parameters -->
 					<jdbc>
 						<driver>org.postgresql.Driver</driver>

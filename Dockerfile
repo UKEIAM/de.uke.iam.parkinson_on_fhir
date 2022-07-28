@@ -9,6 +9,7 @@ ARG POSTGRES_SERVER
 ARG POSTGRES_DATABASE
 ARG POSTGRES_USER
 ARG POSTGRES_PASSWORD
+ARG SKIP_CODE_GENERATION=false
 
 # Define the credential used for the NEXUS
 ARG MAVEN_USER
@@ -28,11 +29,11 @@ RUN yum install -y git \
   && yum clean all
 
 # Download (and cache) all the dependencies
-RUN mvn dependency:resolve-plugins dependency:go-offline
+RUN mvn -Dskip_code_generation=$SKIP_CODE_GENERATION dependency:resolve-plugins dependency:go-offline
 
 # By now, we finally add the source code and compile everything.
 COPY src /parkinson_on_fhir/src/
-RUN mvn package
+RUN mvn -Dskip_code_generation=$SKIP_CODE_GENERATION package
 
 # Create the container for deployment
 FROM tomcat:9.0.64-jdk11-corretto
@@ -41,6 +42,7 @@ ARG POSTGRES_SERVER
 ARG POSTGRES_DATABASE
 ARG POSTGRES_USER
 ARG POSTGRES_PASSWORD
+ARG SKIP_CODE_GENERATION=false
 
 COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATALINA_HOME/webapps/parkinson-fhir.war
 
@@ -51,4 +53,4 @@ COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATAL
 # COPY config/usr/local/tomcat/webapps/manager/META-INF/context.xml $CATALINA_HOME/webapps/manager/META-INF/context.xml
 
 # Store the credentials to allow access to the database
-RUN printf '%s\n' "de.uke.iam.parkinson_on_fhir.postgres_server=$POSTGRES_SERVER" "de.uke.iam.parkinson_on_fhir.database=$POSTGRES_DATABASE" "de.uke.iam.parkinson_on_fhir.user=$POSTGRES_USER" "de.uke.iam.parkinson_on_fhir.password=$POSTGRES_PASSWORD" >> $CATALINA_HOME/conf/catalina.properties
+RUN printf '%s\n' "de.uke.iam.parkinson_on_fhir.postgres_server=$POSTGRES_SERVER" "de.uke.iam.parkinson_on_fhir.database=$POSTGRES_DATABASE" "de.uke.iam.parkinson_on_fhir.user=$POSTGRES_USER" "de.uke.iam.parkinson_on_fhir.password=$POSTGRES_PASSWORD" "de.uke.iam.parkinson_on_fhir.code_generation_skipped=$SKIP_CODE_GENERATION" >> $CATALINA_HOME/conf/catalina.properties

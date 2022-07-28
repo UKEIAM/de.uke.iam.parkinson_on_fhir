@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:14.4-alpine
+    hostname: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=test_database
+    
+  fhir-api:
+    build:
+      context: .
+      args:
+        - POSTGRES_SERVER=postgres
+        - POSTGRES_DATABASE=test_database
+        - POSTGRES_USER=postgres
+        - POSTGRES_PASSWORD=postgres
+        - SKIP_CODE_GENERATION=true
+        - MAVEN_USER=${MAVEN_USER}
+        - MAVEN_PASSWORD=${MAVEN_PASSWORD}
+    restart: unless-stopped
+    depends_on:
+      - database
+    links:
+      - database
+    ports:
+      - ${HOST_PORT}:8080

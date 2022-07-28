@@ -13,13 +13,16 @@ import ca.uhn.fhir.rest.server.RestfulServer;
 import ca.uhn.fhir.rest.server.interceptor.ResponseHighlighterInterceptor;
 import ca.uhn.fhir.rest.openapi.OpenApiInterceptor;
 import org.jooq.SQLDialect;
+import org.jooq.DDLExportConfiguration;
 import org.jooq.DSLContext;
+import org.jooq.Query;
 import org.jooq.impl.DSL;
 
 import de.uke.iam.parkinson_on_fhir.provider.DeviceResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.GroupResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.ObservationResourceProvider;
 import de.uke.iam.parkinson_on_fhir.provider.PatientResourceProvider;
+import de.uke.iam.parkinson_on_fhir.database.Public;
 
 /**
  * This servlet is the actual FHIR server itself
@@ -66,6 +69,25 @@ public class RestfulServlet extends RestfulServer {
 		} catch (Exception e) {
 			logger.error("Unable to establish database connection: {}", e.toString());
 			return;
+		}
+
+		// The code generation was skipped (likely for a test). Reconstruct the schema.
+		logger.info("Checking for appropiate database schema ...");
+		var wasCodeGenerationSkipped = System.getProperty("de.uke.iam.parkinson_on_fhir.code_generation_skipped");
+		if (wasCodeGenerationSkipped.compareTo("true") == 0) {
+			if (!context.meta().getTables().isEmpty()) {
+				logger.info("Appropiate database schema already available");
+			} else {
+				logger.info("Reconstructing database schema...");
+				for (Query query : context.ddl(Public.PUBLIC,
+						new DDLExportConfiguration().createSchemaIfNotExists(true))) {
+					logger.info("> Executing '{}'", query.getSQL());
+					query.execute();
+				}
+				logger.info("Reconstructing done!");
+			}
+		} else {
+			logger.info("Database schema already created during buid");
 		}
 
 		/*
