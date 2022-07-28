@@ -5,10 +5,12 @@ import java.time.ZoneId;
 import java.util.*;
 
 import org.hl7.fhir.r4.model.Observation;
+import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.Quantity;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Observation.ObservationComponentComponent;
 import org.hl7.fhir.r4.model.Observation.ObservationStatus;
+import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IPrimitiveType;
 import org.hl7.fhir.r4.model.Annotation;
@@ -20,20 +22,24 @@ import org.hl7.fhir.r4.model.Period;
 import org.hl7.fhir.r4.model.MarkdownType;
 import org.hl7.fhir.r4.model.Observation.ObservationReferenceRangeComponent;
 
+import ca.uhn.fhir.i18n.Msg;
 import ca.uhn.fhir.model.api.TemporalPrecisionEnum;
 import ca.uhn.fhir.rest.annotation.*;
+import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.api.server.IBundleProvider;
 import ca.uhn.fhir.rest.param.DateRangeParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.NotImplementedOperationException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Record7;
 import org.jooq.Record16;
 import org.jooq.TableField;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
 import org.jooq.Cursor;
@@ -54,6 +60,7 @@ public class ObservationResourceProvider implements IResourceProvider {
      */
     private static abstract class FetchedObservations implements IBundleProvider {
         public final static int FETCH_SIZE = 256;
+        public final static TimeZone TIME_ZONE = TimeZone.getTimeZone("UTC");
 
         protected final List<CodeableConcept> category;
 
@@ -120,6 +127,71 @@ public class ObservationResourceProvider implements IResourceProvider {
         protected static Date castLocalDateTime(LocalDateTime localDateTime) {
             return Date.from(localDateTime.atZone(ZoneId.systemDefault()).toInstant());
         }
+
+        /**
+         * Try to parse a reference where one expect a specific identifier by ensuring
+         * the reference is proper and a value is available.
+         * 
+         * @param reference          The existing reference to be checked.
+         * @param expectedIdentifier The expected identifier.
+         * @throws UnprocessableEntityException Thrown when the reference is not
+         *                                      valid.
+         */
+        public static String parseExpectedReference(Reference reference, String expectedIdentifier)
+                throws UnprocessableEntityException {
+            if (!reference.isEmpty() && reference.getIdentifier().getValue().compareTo(expectedIdentifier) == 0) {
+                var value = reference.getIdentifier().getValue();
+                if (value == null) {
+                    throw new UnprocessableEntityException(
+                            String.format("%sThe given value for identifier '%s' is invalid.",
+                                    Msg.code(639),
+                                    expectedIdentifier));
+                }
+                return value;
+            } else {
+                throw new UnprocessableEntityException(
+                        String.format("%sThe given reference for expected identifier '%s' is invalid.", Msg.code(639),
+                                expectedIdentifier));
+            }
+        }
+
+        /**
+         * Try to parse a list of codeable concepts if exactly one coding is required.
+         * 
+         * @param codeableConcepts The codable concepts.
+         * @param name             The name used for understandable error messages.
+         * @return The included Coding.
+         * @throws UnprocessableEntityException Thrown if there exists not exactly one
+         *                                      codable concept.
+         */
+        public static Coding parseCodeableConcept(List<CodeableConcept> codeableConcepts, String name)
+                throws UnprocessableEntityException {
+            if (codeableConcepts.size() == 1) {
+                return parseCodeableConcept(codeableConcepts.get(0), name);
+            } else {
+                throw new UnprocessableEntityException(
+                        String.format("%sExactly one concept is expected for '%s'", Msg.code(639), name));
+            }
+        }
+
+        /**
+         * Try to parse a list of codings if exactly one coding is required.
+         * 
+         * @param codeableConcept The codable concepts.
+         * @param name            The name used for understandable error messages.
+         * @return The included Coding.
+         * @throws UnprocessableEntityException Thrown if there exists not exactly one
+         *                                      coding.
+         */
+        public static Coding parseCodeableConcept(CodeableConcept codeableConcept, String name)
+                throws UnprocessableEntityException {
+            var codings = codeableConcept.getCoding();
+            if (codings.size() != 1) {
+                throw new UnprocessableEntityException(
+                        String.format("%sExactly one coding is expected for '%s'", Msg.code(639), name));
+            }
+            return codings.get(0);
+        }
     }
 
     /**
@@ -132,8 +204,8 @@ public class ObservationResourceProvider implements IResourceProvider {
          * acceleration data.
          */
         private static class AccelerationComponent {
-            private CodeableConcept concept;
-            private TableField<MeasurementsRecord, Float> tableEntry;
+            private final CodeableConcept concept;
+            private final TableField<MeasurementsRecord, Float> tableEntry;
 
             public AccelerationComponent(TableField<MeasurementsRecord, Float> tableEntry, String loinc_code,
                     String description) {
@@ -147,26 +219,50 @@ public class ObservationResourceProvider implements IResourceProvider {
                 value.setValue(new Quantity(record.get(this.tableEntry)));
                 return value;
             }
+
+            /**
+             * Try to parse a ObservationComponentComponent as an instance of this
+             * AccelerationComponent. If the concept does not match, ignore it and return
+             * null.
+             * 
+             * @param component The potential resource.
+             * @return The value included in the resource or NULL if it does not match.
+             * @throws UnprocessableEntityException The resource matches but is ill-formed.
+             */
+            public Float tryParse(ObservationComponentComponent component) throws UnprocessableEntityException {
+                if (component.getCode().equals(this.concept)) {
+                    try {
+                        return (float) component.getValueQuantity().getValue().doubleValue();
+                    } catch (FHIRException | NullPointerException e) {
+                        throw new UnprocessableEntityException(
+                                "The observation component does not contain a valid quantity.");
+                    }
+                } else {
+                    return null;
+                }
+            }
         }
 
         private Cursor<Record7<LocalDateTime, Integer, Float, Float, Float, String, String>> measurements;
 
         private static final AccelerationComponent[] ACCELERATION_COMPONENTS;
-        private final static TimeZone TIME_ZONE = TimeZone.getTimeZone("UTC");
+        public static final Coding CATEGORY;
+        public static final String RESOURCE_TYPE = "Patient";
 
         static {
             ACCELERATION_COMPONENTS = new AccelerationComponent[3];
             ACCELERATION_COMPONENTS[0] = new AccelerationComponent(MEASUREMENTS.X, "X42", "Acceleration on the X axis");
             ACCELERATION_COMPONENTS[1] = new AccelerationComponent(MEASUREMENTS.Y, "X43", "Acceleration on the Y axis");
             ACCELERATION_COMPONENTS[2] = new AccelerationComponent(MEASUREMENTS.Z, "X44", "Acceleration on the Z axis");
+
+            CATEGORY = new Coding("http://terminology.hl7.org/CodeSystem/observation-category", "procedure",
+                    "Procedure");
         }
 
         public FetchedAccelerationObservations(DSLContext connection, Integer subject, LocalDateTime start,
                 LocalDateTime end) {
             super(connection.selectCount().from(MEASUREMENTS).where(buildWhere(subject, start, end)).fetchOne(0,
-                    int.class),
-                    new Coding("http://terminology.hl7.org/CodeSystem/observation-category", "procedure",
-                            "Procedure"));
+                    int.class), CATEGORY);
 
             this.measurements = connection
                     .select(MEASUREMENTS.TIMESTAMP, MEASUREMENTS.SUBJECT, MEASUREMENTS.X, MEASUREMENTS.Y,
@@ -189,7 +285,7 @@ public class ObservationResourceProvider implements IResourceProvider {
                 observation.setId(String.format("A-%s-%d", database_timestamp.toString(), subject));
                 observation.setStatus(ObservationStatus.FINAL);
                 observation.setCategory(this.category);
-                observation.setSubject(new Reference(new IdType("Patient", subject)));
+                observation.setSubject(new Reference(new IdType(RESOURCE_TYPE, subject)));
                 observation.setEffective(new InstantType(
                         castLocalDateTime(database_timestamp),
                         TemporalPrecisionEnum.MILLI,
@@ -199,11 +295,88 @@ public class ObservationResourceProvider implements IResourceProvider {
                         ACCELERATION_COMPONENTS[1].createObservationComponent(sample),
                         ACCELERATION_COMPONENTS[2].createObservationComponent(sample)));
                 observation.setDevice(new Reference(new IdType("Device", sample.get(SENSORS.DEVICE))));
-                observation.setBodySite(new CodeableConcept(new Coding("custom", body_part, body_part)));
+                observation.setBodySite(new CodeableConcept(new Coding("Custom", body_part, body_part)));
                 loaded_measurements.add(observation);
             }
 
             return loaded_measurements;
+        }
+
+        /**
+         * Try to insert the given observation. If dry-runned, this method could be used
+         * to check for validity. The "category" MUST be correct as it is not checked!
+         * 
+         * @param observation The given observation.
+         * @throws UnprocessableEntityException Thrown when the observation is not
+         *                                      valid.
+         */
+        public static String insertObservation(DSLContext connection, Observation observation)
+                throws UnprocessableEntityException {
+
+            if (observation.getStatus() != ObservationStatus.FINAL) {
+                throw new UnprocessableEntityException(Msg.code(639) + "The observation must be FINAL.");
+            }
+
+            LocalDateTime timestamp;
+            try {
+                timestamp = LocalDateTime.ofInstant(observation.getEffectiveInstantType().getValue().toInstant(),
+                        TIME_ZONE.toZoneId());
+            } catch (FHIRException e) {
+                throw new UnprocessableEntityException(Msg.code(639) + "An instant timestamp is required");
+            }
+
+            // Check the subject
+            int subject_id;
+            try {
+                subject_id = Integer.parseInt(parseExpectedReference(observation.getSubject(), RESOURCE_TYPE));
+            } catch (NumberFormatException e) {
+                throw new UnprocessableEntityException(Msg.code(639) + "The given subject ID is malformed");
+            }
+
+            // Extract device and body side and try to identify the sensor ID from them.
+            var device = parseExpectedReference(observation.getDevice(), "Device");
+            var bodySide = parseCodeableConcept(observation.getBodySite(), "BodySide").getCode();
+            int sensor_id;
+            try {
+                sensor_id = connection.selectOne().from(SENSORS)
+                        .where(SENSORS.DEVICE.eq(device), SENSORS.BODY_PART.eq(bodySide))
+                        .fetchOne(SENSORS.SENSOR_ID, Integer.class).intValue();
+            } catch (DataAccessException | NullPointerException e) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "Unable to identify the proper sensor for the measurement");
+            }
+
+            // Parse the accelerometer values
+            Float[] parsedValues = new Float[3];
+            int currentIndex = 0;
+            for (var knownComponent : ACCELERATION_COMPONENTS) {
+                // Search through all components ...
+                INNER_LOOP: for (var component : observation.getComponent()) {
+                    // ... and try to match to a known one.
+                    if ((parsedValues[currentIndex] = knownComponent.tryParse(component)) != null) {
+                        break INNER_LOOP;
+                    }
+                }
+                ++currentIndex;
+            }
+
+            // Try to insert the values if they are unique
+            try {
+                connection.insertInto(MEASUREMENTS)
+                        .set(MEASUREMENTS.TIMESTAMP, timestamp)
+                        .set(MEASUREMENTS.SUBJECT, subject_id)
+                        .set(MEASUREMENTS.SENSOR, sensor_id)
+                        .set(MEASUREMENTS.X, parsedValues[0])
+                        .set(MEASUREMENTS.Y, parsedValues[1])
+                        .set(MEASUREMENTS.Z, parsedValues[2])
+                        .execute();
+            } catch (DataAccessException e) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "The sample already exists");
+            }
+
+            // Create the ID
+            return String.format("A-%s-%d", timestamp.toString(), subject_id);
         }
 
         private static Condition buildWhere(Integer subject, LocalDateTime start, LocalDateTime end) {
@@ -378,5 +551,19 @@ public class ObservationResourceProvider implements IResourceProvider {
         } else {
             throw new ResourceNotFoundException("Plase specify 'exam' or 'procedure' for category");
         }
+    }
+
+    @Create
+    public MethodOutcome createObservation(@ResourceParam Observation observation) {
+        var concept = FetchedObservations.parseCodeableConcept(observation.getCategory(), "Category");
+        if (!concept.equals(FetchedAccelerationObservations.CATEGORY)) {
+            throw new UnprocessableEntityException("Unsupported observation");
+        }
+
+        MethodOutcome result = new MethodOutcome();
+        result.setId(new IdType("Observation",
+                FetchedAccelerationObservations.insertObservation(this.connection, observation)));
+        result.setOperationOutcome(new OperationOutcome());
+        return result;
     }
 }
