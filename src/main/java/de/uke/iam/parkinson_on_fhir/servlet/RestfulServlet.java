@@ -60,7 +60,7 @@ public class RestfulServlet extends RestfulServer {
 			logger.info("Connecting '{}' with user '{}'", url, user);
 			Connection connection = DriverManager.getConnection(url, user, password);
 			// We disable auto-commit as Postgres does not support fetching otherwise
-			connection.setAutoCommit(false);
+			// connection.setAutoCommit(false);
 
 			logger.info("Initializing jOOQ");
 			context = DSL.using(connection, SQLDialect.POSTGRES);
