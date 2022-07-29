@@ -20,11 +20,19 @@
 		"vscode": {
 			// Set *default* container specific settings.json values on container create.
 			"settings": {
-				"java.configuration.updateBuildConfiguration": "automatic"
+				"editor.formatOnSave": true,
+				"java.configuration.updateBuildConfiguration": "automatic",
+				"java.autobuild.enabled": false,
+				"python.defaultInterpreterPath": "/usr/bin/python3",
+				"python.analysis.typeCheckingMode": "basic",
+				"python.linting.enabled": true,
+				"python.formatting.provider": "black",
+				"python.formatting.blackPath": "/usr/local/bin/black"
 			},
 			// Add the IDs of extensions you want installed when the container is created.
 			"extensions": [
-				"vscjava.vscode-java-pack"
+				"vscjava.vscode-java-pack",
+				"ms-python.python"
 			]
 		}
 	},
