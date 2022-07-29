@@ -15,7 +15,6 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.jooq.DSLContext;
-import org.jooq.Record1;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
@@ -104,29 +103,24 @@ public class PatientResourceProvider implements IResourceProvider {
 
     @Create
     public MethodOutcome createPatient(@ResourceParam Patient patient) {
-        if (patient.getActive()) {
+        if (!patient.getActive()) {
             throw new UnprocessableEntityException(
                     Msg.code(639) + "Patient must be active");
         }
 
-        Record1<Integer> subjectId;
+        int subjectId;
         try {
-            // Check if additional descriptions need to be added
+            // Add the optional description
             var content = patient.getText().getDiv().getContent();
-            if (content != null && !content.isEmpty()) {
-                subjectId = this.connection.insertInto(SUBJECTS).set(SUBJECTS.DESCRIPTION, content)
-                        .returningResult(SUBJECTS.SUBJECT_ID).fetchOne();
-            } else {
-                subjectId = this.connection.insertInto(SUBJECTS).values().returningResult(SUBJECTS.SUBJECT_ID)
-                        .fetchOne();
-            }
+            subjectId = this.connection.insertInto(SUBJECTS).set(SUBJECTS.DESCRIPTION, content)
+                    .returningResult(SUBJECTS.SUBJECT_ID).fetchOne().value1();
         } catch (DataAccessException e) {
             throw new UnprocessableEntityException(
-                    Msg.code(639) + "Generating patient ID failed");
+                    String.format("%sGenerating patient ID failed: %s", Msg.code(639), e.toString()));
         }
 
         MethodOutcome result = new MethodOutcome();
-        result.setId(new IdType("Patient", subjectId.get(SUBJECTS.SUBJECT_ID).toString()));
+        result.setId(new IdType("Patient", (long) subjectId));
         result.setOperationOutcome(new OperationOutcome());
         return result;
     }
