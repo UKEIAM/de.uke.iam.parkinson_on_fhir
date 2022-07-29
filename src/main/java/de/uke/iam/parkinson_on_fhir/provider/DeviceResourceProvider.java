@@ -2,11 +2,17 @@ package de.uke.iam.parkinson_on_fhir.provider;
 
 import java.util.*;
 
+import org.hl7.fhir.r4.model.*;
+
+import ca.uhn.fhir.i18n.Msg;
 import ca.uhn.fhir.rest.annotation.*;
+import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
-import org.hl7.fhir.r4.model.*;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import org.jooq.DSLContext;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
 
@@ -80,5 +86,52 @@ public class DeviceResourceProvider implements IResourceProvider {
             devices.add(device);
         }
         return devices;
+    }
+
+    @Create
+    public MethodOutcome createDevice(@ResourceParam Device device) {
+
+        // Ensure the ID is given
+        String deviceName;
+        var raw_member_identifier = device.getIdentifier();
+        if (raw_member_identifier.size() != 1) {
+            var identifier = raw_member_identifier.get(0);
+            if (identifier.getSystem().compareTo("Device") != 0) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "Only devices are supported");
+            }
+            deviceName = identifier.getValue();
+            if (deviceName != null) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "An ID must be specified");
+            }
+        } else {
+            throw new UnprocessableEntityException(
+                    Msg.code(639) + "Exactly one identifier is require");
+        }
+
+        // Ensure a description is given
+        var deviceDescription = device.getDistinctIdentifier();
+        if (deviceDescription == null) {
+            throw new UnprocessableEntityException(
+                    Msg.code(639) + "An distinct identifier is required for description");
+        }
+
+        // Try to insert the device into the database
+        try {
+            if (this.connection.insertInto(DEVICES).set(DEVICES.DEVICE, deviceName)
+                    .set(DEVICES.DESCRIPTION, deviceDescription).execute() != 1) {
+                throw new DataAccessException("Insert failed");
+            }
+        } catch (DataAccessException e) {
+            throw new UnprocessableEntityException(
+                    Msg.code(639) + "Unable to create the device. Is the identifier already used?");
+        }
+
+        // Generate the result
+        MethodOutcome result = new MethodOutcome();
+        result.setId(new IdType("Device", deviceName));
+        result.setOperationOutcome(new OperationOutcome());
+        return result;
     }
 }
