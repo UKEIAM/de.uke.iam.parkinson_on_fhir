@@ -1,15 +1,22 @@
 package de.uke.iam.parkinson_on_fhir.provider;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import ca.uhn.fhir.i18n.Msg;
 import ca.uhn.fhir.model.primitive.IdDt;
 import ca.uhn.fhir.rest.annotation.*;
+import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import org.hl7.fhir.r4.model.Group.GroupMemberComponent;
 import org.hl7.fhir.r4.model.Group.GroupType;
 import org.hl7.fhir.r4.model.*;
 import org.jooq.DSLContext;
+import org.jooq.Record1;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.jooq.Condition;
 
@@ -108,5 +115,78 @@ public class GroupResourceProvider implements IResourceProvider {
       }
 
       return groups;
+   }
+
+   @Create
+   public MethodOutcome createGroup(@ResourceParam Group group) {
+      if (!group.getActive()) {
+         throw new UnprocessableEntityException(
+               Msg.code(639) + "Group must be active");
+      }
+
+      if (!group.getActual()) {
+         throw new UnprocessableEntityException(
+               Msg.code(639) + "Group must be actual");
+      }
+
+      if (group.getType() != GroupType.PERSON) {
+         throw new UnprocessableEntityException(
+               Msg.code(639) + "Group must consist out of individuals");
+      }
+
+      ArrayList<Integer> subjectIds = new ArrayList<Integer>(group.getMember().size());
+      for (var raw_member : group.getMember()) {
+         try {
+            // Ensure the proper type is given
+            var raw_member_identifier = raw_member.getEntity().getIdentifier();
+            if (raw_member_identifier.getSystem().compareTo("Patient") != 0) {
+               throw new UnprocessableEntityException(
+                     Msg.code(639) + "Only patients are supported");
+            }
+
+            // Try to parse the ID
+            var raw_value = raw_member_identifier.getValue();
+            subjectIds.add(Integer.parseInt(raw_value));
+         } catch (NumberFormatException e) {
+            throw new UnprocessableEntityException(
+                  Msg.code(639) + "The given ID is not a valid patient identifier");
+         }
+      }
+
+      // Create a transaction: If anything fails, everything failes
+      AtomicInteger sourceId = new AtomicInteger(0);
+      this.connection.transaction(config -> {
+         try {
+            // Generate the new ID
+            Record1<Integer> rawSourceId;
+            var name = group.getName();
+            if (name != null) {
+               rawSourceId = this.connection.insertInto(SOURCES).set(SOURCES.DESCRIPTION, name)
+                     .returningResult(SOURCES.SOURCE_ID)
+                     .fetchOne();
+            } else {
+               rawSourceId = this.connection.insertInto(SOURCES).values().returningResult(SOURCES.SOURCE_ID).fetchOne();
+            }
+            sourceId.set(rawSourceId.value1());
+         } catch (DataAccessException e) {
+            throw new UnprocessableEntityException(
+                  Msg.code(639) + "Unable to create the ID for the new group");
+         }
+
+         // Update all subjects to belong to this group
+         for (var subjectId : subjectIds) {
+            if (this.connection.update(SUBJECTS).set(SUBJECTS.SOURCE, sourceId.get())
+                  .where(SUBJECTS.SUBJECT_ID.eq(subjectId))
+                  .execute() != 1) {
+               throw new UnprocessableEntityException(
+                     String.format("%sUnable to find patient with the ID '%d'", Msg.code(639), subjectId));
+            }
+         }
+      });
+
+      MethodOutcome result = new MethodOutcome();
+      result.setId(new IdType("Group", (long) sourceId.get()));
+      result.setOperationOutcome(new OperationOutcome());
+      return result;
    }
 }
