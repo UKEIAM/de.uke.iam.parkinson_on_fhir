@@ -210,7 +210,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             public AccelerationComponent(TableField<MeasurementsRecord, Float> tableEntry, String loinc_code,
                     String description) {
                 this.concept = new CodeableConcept();
-                this.concept.addCoding(new Coding("LOINC", loinc_code, description));
+                this.concept.addCoding(new Coding("http://loinc.org", loinc_code, description));
                 this.tableEntry = tableEntry;
             }
 
