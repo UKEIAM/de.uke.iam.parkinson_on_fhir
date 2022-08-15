@@ -4,7 +4,7 @@ services:
   database:
     image: postgres:14.4-alpine
     hostname: postgres
-    restart: unless-stopped
+    restart: "no"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -21,7 +21,7 @@ services:
         - SKIP_CODE_GENERATION=true
         - MAVEN_USER=${MAVEN_USER}
         - MAVEN_PASSWORD=${MAVEN_PASSWORD}
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       - database
     links:
