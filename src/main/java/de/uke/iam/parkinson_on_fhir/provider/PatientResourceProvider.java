@@ -116,7 +116,9 @@ public class PatientResourceProvider implements IResourceProvider {
                     .returningResult(SUBJECTS.SUBJECT_ID).fetchOne().value1();
         } catch (DataAccessException e) {
             throw new UnprocessableEntityException(
-                    String.format("%sGenerating patient ID failed: %s", Msg.code(639), e.toString()));
+                    String.format("%sGenerating patient ID with description '%s' failed: %s", Msg.code(639),
+                            patient.getText().getDiv().getContent(),
+                            e.toString()));
         }
 
         MethodOutcome result = new MethodOutcome();

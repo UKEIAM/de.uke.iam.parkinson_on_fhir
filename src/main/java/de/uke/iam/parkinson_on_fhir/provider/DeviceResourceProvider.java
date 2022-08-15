@@ -90,29 +90,6 @@ public class DeviceResourceProvider implements IResourceProvider {
 
     @Create
     public MethodOutcome createDevice(@ResourceParam Device device) {
-
-        /*
-         * // We have to investigate how to access the ID as String.
-         * String deviceName;
-         * var raw_member_identifier = device.getIdentifier();
-         * 
-         * if (raw_member_identifier.size() != 1) {
-         * var identifier = raw_member_identifier.get(0);
-         * if (identifier.getSystem().compareTo("Device") != 0) {
-         * throw new UnprocessableEntityException(
-         * Msg.code(639) + "Only devices are supported");
-         * }
-         * deviceName = identifier.getValue();
-         * if (deviceName != null) {
-         * throw new UnprocessableEntityException(
-         * Msg.code(639) + "An ID must be specified");
-         * }
-         * } else {
-         * throw new UnprocessableEntityException(
-         * Msg.code(639) + "Exactly one identifier is require");
-         * }
-         */
-
         // Ensure a description is given
         var deviceDescription = device.getDistinctIdentifier();
         if (deviceDescription == null) {
@@ -127,9 +104,10 @@ public class DeviceResourceProvider implements IResourceProvider {
                 throw new DataAccessException("Insert failed");
             }
         } catch (DataAccessException e) {
-            throw new UnprocessableEntityException(
-                    Msg.code(639) +
-                            "Unable to create the device. Is the identifier already used?");
+            throw new UnprocessableEntityException(String
+                    .format("%sUnable to create the device '%s'. Is the identifier already used?",
+                            Msg.code(639),
+                            deviceDescription));
         }
 
         // Generate the result

@@ -14,7 +14,7 @@ class TestFhirApi(unittest.TestCase):
     def test_device_insert(self):
         payload = {
             "resourceType": "Device",
-            "distinctIdentifier": "This is an example device",
+            "distinctIdentifier": "ExampleDevice1",
         }
         r = requests.post(f"{TestFhirApi.SERVER}/Device", json=payload)
         self.assertEqual(r.status_code, 201)
@@ -123,7 +123,6 @@ class TestFhirApi(unittest.TestCase):
         }
 
         r = requests.post(f"{TestFhirApi.SERVER}/Observation", json=payload)
-        print(r.text)
         self.assertEqual(r.status_code, 201)
 
 
