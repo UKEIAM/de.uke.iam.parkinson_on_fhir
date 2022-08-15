@@ -27,7 +27,16 @@
 				"python.analysis.typeCheckingMode": "basic",
 				"python.linting.enabled": true,
 				"python.formatting.provider": "black",
-				"python.formatting.blackPath": "/usr/local/bin/black"
+				"python.formatting.blackPath": "/usr/local/bin/black",
+				"python.testing.unittestArgs": [
+					"-v",
+					"-s",
+					"./src/tests",
+					"-p",
+					"*test*.py"
+				],
+				"python.testing.pytestEnabled": false,
+				"python.testing.unittestEnabled": true
 			},
 			// Add the IDs of extensions you want installed when the container is created.
 			"extensions": [
@@ -45,11 +54,11 @@
 		"source=${localWorkspaceFolder}/settings.xml,target=/home/vscode/.m2/settings.xml,type=bind,consistency=cached"
 	],
 	"remoteEnv": {
-		"MAVEN_USER": "<YOUR USERNAME HERE>",
-		"MAVEN_PASSWORD": "<YOUR PASSWORD HERE>",
-		"POSTGRES_SERVER": "<YOUR POSTGRES SERVER HERE, LIKE 172.17.0.1:50201",
-		"POSTGRES_DATABASE": "<YOUR DATABASE HERE>",
-		"POSTGRES_USER": "<YOUR DATABASE USERNAME HERE>",
-		"POSTGRES_PASSWORD": "<YOUR DATABASE PASSWORD HERE>"
+		"MAVEN_USER": "gundler",
+		"MAVEN_PASSWORD": "test1234",
+		"POSTGRES_SERVER": "172.17.0.1:50201",
+		"POSTGRES_DATABASE": "parkinson",
+		"POSTGRES_USER": "gundler",
+		"POSTGRES_PASSWORD": "test1234"
 	}
 }
