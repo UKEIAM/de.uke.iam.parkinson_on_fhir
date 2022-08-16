@@ -9,6 +9,7 @@ import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.hl7.fhir.r4.model.Group.GroupMemberComponent;
@@ -64,20 +65,7 @@ public class GroupResourceProvider implements IResourceProvider {
     */
    @Read(version = false)
    public Group readGroup(@IdParam IdType theId) {
-      // Try to parse the ID
-      int id;
-      try {
-         id = theId.getIdPartAsLong().intValue();
-      } catch (NumberFormatException e) {
-         throw new ResourceNotFoundException(theId);
-      }
-
-      // We do not support versions
-      if (theId.hasVersionIdPart()) {
-         throw new ResourceNotFoundException("Versions are not supported");
-      }
-
-      // Query the groups
+      var id = parseId(theId);
       var groups = this.loadGroups(SOURCES.SOURCE_ID.eq(id));
       if (!groups.isEmpty()) {
          return groups.get(0);
@@ -91,7 +79,8 @@ public class GroupResourceProvider implements IResourceProvider {
 
       // Query all subjects with associated sources
       for (var record : this.connection.select(SOURCES.SOURCE_ID, SOURCES.DESCRIPTION, SUBJECTS.SUBJECT_ID)
-            .from(SOURCES.join(SUBJECTS).on(SUBJECTS.SOURCE.eq(SOURCES.SOURCE_ID)))
+            .from(SOURCES)
+            .leftJoin(SUBJECTS).on(SUBJECTS.SOURCE.eq(SOURCES.SOURCE_ID))
             .where(where)
             .orderBy(SOURCES.SOURCE_ID)
             .fetch()) {
@@ -109,10 +98,14 @@ public class GroupResourceProvider implements IResourceProvider {
             groups.add(group);
          }
 
-         // Add a specific subject as member
-         var member = new GroupMemberComponent();
-         member.setEntity(new Reference(new IdDt("Patient", (long) record.get(SUBJECTS.SUBJECT_ID))));
-         groups.get(groups.size() - 1).addMember(member);
+         // Add a specific subject as member. We did a "left join": For groups without
+         // members, the subject ID may just be null!
+         var subjectId = record.get(SUBJECTS.SUBJECT_ID);
+         if (subjectId != null) {
+            var member = new GroupMemberComponent();
+            member.setEntity(new Reference(new IdDt("Patient", (long) subjectId)));
+            groups.get(groups.size() - 1).addMember(member);
+         }
       }
 
       return groups;
@@ -157,16 +150,18 @@ public class GroupResourceProvider implements IResourceProvider {
       // Create a transaction: If anything fails, everything failes
       AtomicInteger sourceId = new AtomicInteger(0);
       this.connection.transaction(config -> {
+         var context = config.dsl();
+
          try {
             // Generate the new ID
             Record1<Integer> rawSourceId;
             var name = group.getName();
             if (name != null) {
-               rawSourceId = this.connection.insertInto(SOURCES).set(SOURCES.DESCRIPTION, name)
+               rawSourceId = context.insertInto(SOURCES).set(SOURCES.DESCRIPTION, name)
                      .returningResult(SOURCES.SOURCE_ID)
                      .fetchOne();
             } else {
-               rawSourceId = this.connection.insertInto(SOURCES).values().returningResult(SOURCES.SOURCE_ID).fetchOne();
+               rawSourceId = context.insertInto(SOURCES).values().returningResult(SOURCES.SOURCE_ID).fetchOne();
             }
             sourceId.set(rawSourceId.value1());
          } catch (DataAccessException e) {
@@ -176,7 +171,7 @@ public class GroupResourceProvider implements IResourceProvider {
 
          // Update all subjects to belong to this group
          for (var subjectId : subjectIds) {
-            if (this.connection.update(SUBJECTS).set(SUBJECTS.SOURCE, sourceId.get())
+            if (context.update(SUBJECTS).set(SUBJECTS.SOURCE, sourceId.get())
                   .where(SUBJECTS.SUBJECT_ID.eq(subjectId))
                   .execute() != 1) {
                throw new UnprocessableEntityException(
@@ -189,5 +184,49 @@ public class GroupResourceProvider implements IResourceProvider {
       result.setId(new IdType("Group", (long) sourceId.get()));
       result.setOperationOutcome(new OperationOutcome());
       return result;
+   }
+
+   @Delete
+   public void deleteGroup(@IdParam IdType theId) {
+      // Try to parse the ID
+      var id = parseId(theId);
+      this.connection.transaction(config -> {
+         var context = config.dsl();
+
+         // Remove the association with all included subjects
+         context.update(SUBJECTS).setNull(SUBJECTS.SOURCE).where(SUBJECTS.SOURCE.eq(id)).execute();
+
+         // Try to delete the group from the database
+         try {
+            // Check if anything was deleted
+            if (context.deleteFrom(SOURCES).where(SOURCES.SOURCE_ID.eq(id)).execute() == 0) {
+               throw new ResourceNotFoundException(theId);
+            }
+         } catch (DataAccessException e) {
+            throw new ResourceVersionConflictException(
+                  String.format("%sUnable to delete group '%d' as it is currently used", Msg.code(635), id));
+         }
+      });
+   }
+
+   /**
+    * Try to parse the ID from a raw IdType. If it is not a proper int or has an
+    * associated ResourceNotFoundException
+    */
+   private static int parseId(IdType theId) throws ResourceNotFoundException {
+      // Try to parse the ID
+      int id;
+      try {
+         id = theId.getIdPartAsLong().intValue();
+      } catch (NumberFormatException e) {
+         throw new ResourceNotFoundException(theId);
+      }
+
+      // We do not support versions
+      if (theId.hasVersionIdPart()) {
+         throw new ResourceNotFoundException("Versions are not supported");
+      }
+
+      return id;
    }
 }
