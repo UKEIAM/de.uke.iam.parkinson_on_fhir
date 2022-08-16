@@ -3,6 +3,43 @@ import unittest
 import random
 import string
 
+# The server where the REST interface run. By default, this points to the Docker host.
+SERVER = "http://172.17.0.1:50202/parkinson-fhir"
+
+
+class TestDevice(unittest.TestCase):
+    def __init__(self, *kargs, **kwargs) -> None:
+        super().__init__(*kargs, **kwargs)
+        self.resource_url = ""
+        self.payload = {
+            "resourceType": "Device",
+            "distinctIdentifier": "ExampleDevice",
+        }
+
+    def setUp(self):
+        r = requests.post(f"{SERVER}/Device", json=self.payload)
+        self.assertEqual(r.status_code, 201, msg=r.text)
+        self.resource_url = r.headers["location"]
+
+    def testInsertAndDelete(self):
+        pass
+
+    def testFailOnMultipleRun(self):
+        r = requests.post(f"{SERVER}/Device", json=self.payload)
+        self.assertEqual(r.status_code, 422, msg=r.text)
+
+    def testGet(self):
+        r = requests.get(self.resource_url)
+        self.assertEqual(r.status_code, 200, msg=r.text)
+
+    def testDeleteNonexisting(self):
+        r = requests.delete(f"{SERVER}/Device/AnotherExampleDevice")
+        self.assertEqual(r.status_code, 404, msg=r.text)
+
+    def tearDown(self):
+        r = requests.delete(self.resource_url)
+        self.assertEqual(r.status_code, 204, msg=r.text)
+
 
 class TestFhirApi(unittest.TestCase):
     """
@@ -10,25 +47,9 @@ class TestFhirApi(unittest.TestCase):
     However, to some extend randomness is introduced for ensuring successfull runs nevertheless.
     """
 
-    # The server where the REST interface run. By default, this points to the Docker host.
-    SERVER = "http://172.17.0.1:50202/parkinson-fhir"
-
     def test_config(self):
-        r = requests.get(f"{TestFhirApi.SERVER}/metadata")
+        r = requests.get(f"{SERVER}/metadata")
         self.assertEqual(r.status_code, 200)
-
-    def test_device_insert(self):
-        identifier = TestFhirApi.generate_unique_name()
-        payload = {
-            "resourceType": "Device",
-            "distinctIdentifier": identifier,
-        }
-        r = requests.post(f"{TestFhirApi.SERVER}/Device", json=payload)
-        self.assertEqual(r.status_code, 201)
-
-        # Inserting the same thing will fail
-        r = requests.post(f"{TestFhirApi.SERVER}/Device", json=payload)
-        self.assertEqual(r.status_code, 422)
 
     def test_patient(self):
         payload = {
@@ -37,7 +58,7 @@ class TestFhirApi(unittest.TestCase):
             "identifier": {"value": "John Doe"},
         }
 
-        r = requests.post(f"{TestFhirApi.SERVER}/Patient", json=payload)
+        r = requests.post(f"{SERVER}/Patient", json=payload)
         self.assertEqual(r.status_code, 201)
 
     def test_group(self):
@@ -49,7 +70,7 @@ class TestFhirApi(unittest.TestCase):
             "name": "Test Group",
         }
 
-        r = requests.post(f"{TestFhirApi.SERVER}/Group", json=payload)
+        r = requests.post(f"{SERVER}/Group", json=payload)
         self.assertEqual(r.status_code, 201)
 
     def test_observation(self):
@@ -129,7 +150,7 @@ class TestFhirApi(unittest.TestCase):
             ],
         }
 
-        r = requests.post(f"{TestFhirApi.SERVER}/Observation", json=payload)
+        r = requests.post(f"{SERVER}/Observation", json=payload)
         self.assertEqual(r.status_code, 201)
 
     @staticmethod

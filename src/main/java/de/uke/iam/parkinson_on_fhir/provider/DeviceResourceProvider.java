@@ -9,6 +9,7 @@ import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.jooq.DSLContext;
@@ -51,22 +52,14 @@ public class DeviceResourceProvider implements IResourceProvider {
      * @return Returns a resource matching this identifier, or null if none exists.
      */
     @Read(version = false)
-    public Device readPatient(@IdParam IdType theId) {
-        // Try to parse the ID
-        int id;
-        try {
-            id = theId.getIdPartAsLong().intValue();
-        } catch (NumberFormatException e) {
-            throw new ResourceNotFoundException(theId);
-        }
-
+    public Device readDevice(@IdParam IdType theId) {
         // We do not support versions
         if (theId.hasVersionIdPart()) {
             throw new ResourceNotFoundException("Versions are not supported");
         }
 
         // Query the groups
-        var groups = this.loadDevices(SUBJECTS.SUBJECT_ID.eq(id));
+        var groups = this.loadDevices(DEVICES.DEVICE.eq(theId.getIdPart()));
         if (!groups.isEmpty()) {
             return groups.get(0);
         } else {
@@ -90,7 +83,6 @@ public class DeviceResourceProvider implements IResourceProvider {
 
     @Create
     public MethodOutcome createDevice(@ResourceParam Device device) {
-        // Ensure a description is given
         var deviceDescription = device.getDistinctIdentifier();
         if (deviceDescription == null) {
             throw new UnprocessableEntityException(
@@ -115,6 +107,21 @@ public class DeviceResourceProvider implements IResourceProvider {
         result.setId(new IdType("Device", deviceDescription));
         result.setOperationOutcome(new OperationOutcome());
         return result;
+    }
 
+    @Delete
+    public void deleteDevice(@IdParam IdType id) {
+        var identifier = id.getIdPart();
+
+        // Try to delete the device from the database
+        try {
+            // Check if anything was deleted
+            if (this.connection.deleteFrom(DEVICES).where(DEVICES.DEVICE.eq(identifier)).execute() == 0) {
+                throw new ResourceNotFoundException(String.format("Device '%s' not found.", Msg.code(634), identifier));
+            }
+        } catch (DataAccessException e) {
+            throw new ResourceVersionConflictException(
+                    String.format("%sUnable to delete device '%s' as it is in use", Msg.code(635), identifier));
+        }
     }
 }
