@@ -12,6 +12,7 @@ import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.jooq.DSLContext;
@@ -132,5 +133,27 @@ public class PatientResourceProvider implements IResourceProvider {
         result.setId(new IdType("Patient", (long) subjectId));
         result.setOperationOutcome(new OperationOutcome());
         return result;
+    }
+
+    @Delete
+    public void deletePatient(@IdParam IdType rawId) {
+        int id;
+        try {
+            id = rawId.getIdPartAsLong().intValue();
+        } catch (NumberFormatException e) {
+            throw new ResourceNotFoundException(rawId);
+        }
+
+        // Try to delete the patient from the database
+        try {
+            // Check if anything was deleted
+            if (this.connection.deleteFrom(SUBJECTS).where(SUBJECTS.SUBJECT_ID.eq(id)).execute() == 0) {
+                throw new ResourceNotFoundException(
+                        String.format("%sAn subject with the ID '%d' not found.", Msg.code(634), id));
+            }
+        } catch (DataAccessException e) {
+            throw new ResourceVersionConflictException(
+                    String.format("%sUnable to delete subject with ID '%d' as it is in use", Msg.code(635), id));
+        }
     }
 }

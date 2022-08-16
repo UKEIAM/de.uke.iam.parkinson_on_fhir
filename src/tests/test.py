@@ -41,6 +41,37 @@ class TestDevice(unittest.TestCase):
         self.assertEqual(r.status_code, 204, msg=r.text)
 
 
+class TestPatient(unittest.TestCase):
+    def __init__(self, *kargs, **kwargs) -> None:
+        super().__init__(*kargs, **kwargs)
+        self.resource_url = ""
+        self.payload = {
+            "resourceType": "Patient",
+            "active": True,
+            "identifier": {"value": "John Doe"},
+        }
+
+    def setUp(self):
+        r = requests.post(f"{SERVER}/Patient", json=self.payload)
+        self.assertEqual(r.status_code, 201, msg=r.text)
+        self.resource_url = r.headers["location"]
+
+    def testInsertAndDelete(self):
+        pass
+
+    def testGet(self):
+        r = requests.get(self.resource_url)
+        self.assertEqual(r.status_code, 200, msg=r.text)
+
+    def testDeleteNonexisting(self):
+        r = requests.delete(f"{SERVER}/Patient/42")
+        self.assertEqual(r.status_code, 404, msg=r.text)
+
+    def tearDown(self):
+        r = requests.delete(self.resource_url)
+        self.assertEqual(r.status_code, 204, msg=r.text)
+
+
 class TestFhirApi(unittest.TestCase):
     """
     Integration tests for the FHIR API. In general, the database must be clear with each start.
@@ -50,16 +81,6 @@ class TestFhirApi(unittest.TestCase):
     def test_config(self):
         r = requests.get(f"{SERVER}/metadata")
         self.assertEqual(r.status_code, 200)
-
-    def test_patient(self):
-        payload = {
-            "resourceType": "Patient",
-            "active": True,
-            "identifier": {"value": "John Doe"},
-        }
-
-        r = requests.post(f"{SERVER}/Patient", json=payload)
-        self.assertEqual(r.status_code, 201)
 
     def test_group(self):
         payload = {
@@ -151,7 +172,7 @@ class TestFhirApi(unittest.TestCase):
         }
 
         r = requests.post(f"{SERVER}/Observation", json=payload)
-        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.status_code, 201, msg=r.text)
 
     @staticmethod
     def generate_unique_name(lenght: int = 7) -> str:
