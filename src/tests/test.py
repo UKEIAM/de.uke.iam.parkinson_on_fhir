@@ -1,8 +1,14 @@
 import requests
 import unittest
+import random
+import string
 
 
 class TestFhirApi(unittest.TestCase):
+    """
+    Integration tests for the FHIR API. In general, the database must be clear with each start.
+    However, to some extend randomness is introduced for ensuring successfull runs nevertheless.
+    """
 
     # The server where the REST interface run. By default, this points to the Docker host.
     SERVER = "http://172.17.0.1:50202/parkinson-fhir"
@@ -12,9 +18,10 @@ class TestFhirApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
 
     def test_device_insert(self):
+        identifier = TestFhirApi.generate_unique_name()
         payload = {
             "resourceType": "Device",
-            "distinctIdentifier": "ExampleDevice1",
+            "distinctIdentifier": identifier,
         }
         r = requests.post(f"{TestFhirApi.SERVER}/Device", json=payload)
         self.assertEqual(r.status_code, 201)
@@ -27,7 +34,7 @@ class TestFhirApi(unittest.TestCase):
         payload = {
             "resourceType": "Patient",
             "active": True,
-            "text": {"status": "additional", "div": "Some metadata"},
+            "identifier": {"value": "John Doe"},
         }
 
         r = requests.post(f"{TestFhirApi.SERVER}/Patient", json=payload)
@@ -124,6 +131,10 @@ class TestFhirApi(unittest.TestCase):
 
         r = requests.post(f"{TestFhirApi.SERVER}/Observation", json=payload)
         self.assertEqual(r.status_code, 201)
+
+    @staticmethod
+    def generate_unique_name(lenght: int = 7) -> str:
+        return "".join(random.choices(string.ascii_uppercase + string.digits, k=lenght))
 
 
 if __name__ == "__main__":

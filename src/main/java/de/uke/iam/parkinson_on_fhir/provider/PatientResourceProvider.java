@@ -4,7 +4,7 @@ import java.util.*;
 
 import org.hl7.fhir.r4.model.Patient;
 import org.hl7.fhir.r4.model.IdType;
-import org.hl7.fhir.r4.model.Narrative;
+import org.hl7.fhir.r4.model.Identifier;
 import org.hl7.fhir.r4.model.OperationOutcome;
 
 import ca.uhn.fhir.i18n.Msg;
@@ -88,12 +88,9 @@ public class PatientResourceProvider implements IResourceProvider {
             patient.setId(record.get(SUBJECTS.SUBJECT_ID).toString());
             patient.setActive(true);
 
-            // Add description if additionally given
+            // Add human understandable description
             var description = record.get(SUBJECTS.DESCRIPTION);
-            if (description != null) {
-                patient.getText().setStatus(Narrative.NarrativeStatus.ADDITIONAL);
-                patient.getText().setDivAsString(description);
-            }
+            patient.setIdentifier(Arrays.asList(new Identifier().setValue(description)));
 
             patients.add(patient);
         }
@@ -108,16 +105,26 @@ public class PatientResourceProvider implements IResourceProvider {
                     Msg.code(639) + "Patient must be active");
         }
 
+        // Get the identifier of the patient
+        String identifier;
+        {
+            var identifiers = patient.getIdentifier();
+            if (identifiers.size() != 1) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "The patient requires exactly one understandable identifier");
+            }
+            identifier = identifiers.get(0).getValue();
+        }
+
+        // Try to insert the subject and get the ID
         int subjectId;
         try {
-            // Add the optional description
-            var content = patient.getText().getDiv().getContent();
-            subjectId = this.connection.insertInto(SUBJECTS).set(SUBJECTS.DESCRIPTION, content)
+            subjectId = this.connection.insertInto(SUBJECTS).set(SUBJECTS.DESCRIPTION, identifier)
                     .returningResult(SUBJECTS.SUBJECT_ID).fetchOne().value1();
         } catch (DataAccessException e) {
             throw new UnprocessableEntityException(
-                    String.format("%sGenerating patient ID with description '%s' failed: %s", Msg.code(639),
-                            patient.getText().getDiv().getContent(),
+                    String.format("%sGenerating patient ID with identifier '%s' failed: %s", Msg.code(639),
+                            identifier,
                             e.toString()));
         }
 
