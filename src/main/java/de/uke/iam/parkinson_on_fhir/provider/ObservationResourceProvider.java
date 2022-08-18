@@ -4,15 +4,15 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 
+import org.hl7.fhir.exceptions.FHIRException;
+import org.hl7.fhir.instance.model.api.IBaseResource;
+import org.hl7.fhir.instance.model.api.IPrimitiveType;
 import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.Quantity;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Observation.ObservationComponentComponent;
 import org.hl7.fhir.r4.model.Observation.ObservationStatus;
-import org.hl7.fhir.exceptions.FHIRException;
-import org.hl7.fhir.instance.model.api.IBaseResource;
-import org.hl7.fhir.instance.model.api.IPrimitiveType;
 import org.hl7.fhir.r4.model.Annotation;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
@@ -137,22 +137,27 @@ public class ObservationResourceProvider implements IResourceProvider {
          * @throws UnprocessableEntityException Thrown when the reference is not
          *                                      valid.
          */
-        public static String parseExpectedReference(Reference reference, String expectedIdentifier)
+        protected static String parseExpectedReference(Reference reference, String expectedIdentifier)
                 throws UnprocessableEntityException {
-            if (!reference.isEmpty() && reference.getIdentifier().getValue().compareTo(expectedIdentifier) == 0) {
-                var value = reference.getIdentifier().getValue();
-                if (value == null) {
-                    throw new UnprocessableEntityException(
-                            String.format("%sThe given value for identifier '%s' is invalid.",
-                                    Msg.code(639),
-                                    expectedIdentifier));
+
+            if (!reference.isEmpty()) {
+                var referenceString = reference.getReference();
+                if (referenceString != null) {
+                    // Check if the reference is relative
+                    if (!referenceString.startsWith(expectedIdentifier + "/")) {
+                        throw new UnprocessableEntityException(
+                                String.format(
+                                        "%sThe given reference '%s' is invalid as only relative references are supported",
+                                        Msg.code(639),
+                                        expectedIdentifier));
+                    }
+                    return referenceString.substring(expectedIdentifier.length() + 1);
                 }
-                return value;
-            } else {
-                throw new UnprocessableEntityException(
-                        String.format("%sThe given reference for expected identifier '%s' is invalid.", Msg.code(639),
-                                expectedIdentifier));
             }
+
+            throw new UnprocessableEntityException(
+                    String.format("%sThe given reference for expected identifier '%s' is invalid", Msg.code(639),
+                            expectedIdentifier));
         }
 
         /**
@@ -164,7 +169,7 @@ public class ObservationResourceProvider implements IResourceProvider {
          * @throws UnprocessableEntityException Thrown if there exists not exactly one
          *                                      codable concept.
          */
-        public static Coding parseCodeableConcept(List<CodeableConcept> codeableConcepts, String name)
+        protected static Coding parseCodeableConcept(List<CodeableConcept> codeableConcepts, String name)
                 throws UnprocessableEntityException {
             if (codeableConcepts.size() == 1) {
                 return parseCodeableConcept(codeableConcepts.get(0), name);
@@ -183,7 +188,7 @@ public class ObservationResourceProvider implements IResourceProvider {
          * @throws UnprocessableEntityException Thrown if there exists not exactly one
          *                                      coding.
          */
-        public static Coding parseCodeableConcept(CodeableConcept codeableConcept, String name)
+        protected static Coding parseCodeableConcept(CodeableConcept codeableConcept, String name)
                 throws UnprocessableEntityException {
             var codings = codeableConcept.getCoding();
             if (codings.size() != 1) {
@@ -230,7 +235,8 @@ public class ObservationResourceProvider implements IResourceProvider {
              * @throws UnprocessableEntityException The resource matches but is ill-formed.
              */
             public Float tryParse(ObservationComponentComponent component) throws UnprocessableEntityException {
-                if (component.getCode().equals(this.concept)) {
+                var code = component.getCode().getCodingFirstRep().getCode();
+                if (code != null && code.compareTo(this.concept.getCodingFirstRep().getCode()) == 0) {
                     try {
                         return (float) component.getValueQuantity().getValue().doubleValue();
                     } catch (FHIRException | NullPointerException e) {
@@ -240,6 +246,11 @@ public class ObservationResourceProvider implements IResourceProvider {
                 } else {
                     return null;
                 }
+            }
+
+            @Override
+            public String toString() {
+                return this.concept.getCoding().get(0).getDisplay();
             }
         }
 
@@ -303,8 +314,8 @@ public class ObservationResourceProvider implements IResourceProvider {
         }
 
         /**
-         * Try to insert the given observation. If dry-runned, this method could be used
-         * to check for validity. The "category" MUST be correct as it is not checked!
+         * Try to insert the given observation. The "category" MUST be correct as it is
+         * not checked!
          * 
          * @param observation The given observation.
          * @throws UnprocessableEntityException Thrown when the observation is not
@@ -322,29 +333,20 @@ public class ObservationResourceProvider implements IResourceProvider {
                 timestamp = LocalDateTime.ofInstant(observation.getEffectiveInstantType().getValue().toInstant(),
                         TIME_ZONE.toZoneId());
             } catch (FHIRException e) {
-                throw new UnprocessableEntityException(Msg.code(639) + "An instant timestamp is required");
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "An instant timestamp is required but not provided");
             }
 
             // Check the subject
-            int subject_id;
+            int subjectId;
             try {
-                subject_id = Integer.parseInt(parseExpectedReference(observation.getSubject(), RESOURCE_TYPE));
+                subjectId = Integer.parseInt(parseExpectedReference(observation.getSubject(), RESOURCE_TYPE));
             } catch (NumberFormatException e) {
                 throw new UnprocessableEntityException(Msg.code(639) + "The given subject ID is malformed");
             }
 
-            // Extract device and body side and try to identify the sensor ID from them.
-            var device = parseExpectedReference(observation.getDevice(), "Device");
-            var bodySide = parseCodeableConcept(observation.getBodySite(), "BodySide").getCode();
-            int sensor_id;
-            try {
-                sensor_id = connection.selectOne().from(SENSORS)
-                        .where(SENSORS.DEVICE.eq(device), SENSORS.BODY_PART.eq(bodySide))
-                        .fetchOne(SENSORS.SENSOR_ID, Integer.class).intValue();
-            } catch (DataAccessException | NullPointerException e) {
-                throw new UnprocessableEntityException(
-                        Msg.code(639) + "Unable to identify the proper sensor for the measurement");
-            }
+            // Extract (and create, if necessary) the sensor ID
+            int sensorId = getSensorId(connection, observation);
 
             // Parse the accelerometer values
             Float[] parsedValues = new Float[3];
@@ -359,24 +361,32 @@ public class ObservationResourceProvider implements IResourceProvider {
                 }
                 ++currentIndex;
             }
+            for (int i = 0; i < parsedValues.length; ++i) {
+                if (parsedValues[i] == null) {
+                    throw new UnprocessableEntityException(String
+                            .format("%sUnable to parse acceleration value for component '%s'",
+                                    Msg.code(639), ACCELERATION_COMPONENTS[i].toString()));
+                }
+            }
 
             // Try to insert the values if they are unique
             try {
                 connection.insertInto(MEASUREMENTS)
                         .set(MEASUREMENTS.TIMESTAMP, timestamp)
-                        .set(MEASUREMENTS.SUBJECT, subject_id)
-                        .set(MEASUREMENTS.SENSOR, sensor_id)
+                        .set(MEASUREMENTS.SUBJECT, subjectId)
+                        .set(MEASUREMENTS.SENSOR, sensorId)
                         .set(MEASUREMENTS.X, parsedValues[0])
                         .set(MEASUREMENTS.Y, parsedValues[1])
                         .set(MEASUREMENTS.Z, parsedValues[2])
                         .execute();
             } catch (DataAccessException e) {
-                throw new UnprocessableEntityException(
-                        Msg.code(639) + "The sample already exists");
+                throw new UnprocessableEntityException(String
+                        .format("%sUnable to create sample. Is there a subject '%d' already in the database?",
+                                Msg.code(639), subjectId));
             }
 
             // Create the ID
-            return String.format("A-%s-%d", timestamp.toString(), subject_id);
+            return String.format("A-%s-%d", timestamp.toString(), subjectId);
         }
 
         private static Condition buildWhere(Integer subject, LocalDateTime start, LocalDateTime end) {
@@ -391,6 +401,65 @@ public class ObservationResourceProvider implements IResourceProvider {
                 where = where.and(MEASUREMENTS.TIMESTAMP.le(end));
             }
             return where;
+        }
+
+        private static int getSensorId(DSLContext connection, Observation observation)
+                throws UnprocessableEntityException {
+            // Extract device and body side and try to identify the sensor ID from them.
+            var device = parseExpectedReference(observation.getDevice(), "Device");
+            var bodyPart = getBodyPart(connection, observation);
+
+            // Try to query the sensor if it already exists
+            Integer sensorId;
+            try {
+                sensorId = connection.selectOne().from(SENSORS)
+                        .where(SENSORS.DEVICE.eq(device), SENSORS.BODY_PART.eq(bodyPart))
+                        .fetchOne(SENSORS.SENSOR_ID, Integer.class);
+            } catch (DataAccessException e) {
+                throw new UnprocessableEntityException(
+                        Msg.code(639) + "Unable to identify the proper sensor for the measurement");
+            }
+
+            // If the sensor does not already exist, create it.
+            if (sensorId == null) {
+                try {
+                    sensorId = connection.insertInto(SENSORS, SENSORS.BODY_PART, SENSORS.DEVICE)
+                            .values(bodyPart, device).returningResult(SENSORS.SENSOR_ID).fetchOne().value1();
+                } catch (DataAccessException e) {
+                    throw new UnprocessableEntityException(String.format(
+                            "%sUnable to create combination of device and body part. Is the device '%' available within the database?",
+                            Msg.code(639), device));
+                }
+            }
+
+            return sensorId.intValue();
+        }
+
+        /**
+         * Parse the body side of an observation. If it does not already exists, it will
+         * be created and stored within the database. In any case, the returned value is
+         * safe to use within the SENSORS table.
+         */
+        private static String getBodyPart(DSLContext connection, Observation observation)
+                throws UnprocessableEntityException {
+            // Extract the usable information from the observation
+            var bodySide = parseCodeableConcept(observation.getBodySite(), "BodySide");
+            var name = bodySide.getCode();
+            var description = bodySide.getDisplay();
+            if (description == null) {
+                description = name;
+            }
+
+            try {
+                connection.insertInto(BODYPARTS, BODYPARTS.NAME, BODYPARTS.DESCRIPTION)
+                        .values(name, description).onDuplicateKeyIgnore().execute();
+            } catch (DataAccessException e) {
+                throw new UnprocessableEntityException(String
+                        .format("%sUnable to query or insert the body part '%s' into the database", Msg.code(639),
+                                name));
+            }
+
+            return name;
         }
     }
 
@@ -496,6 +565,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             }
             return where;
         }
+
     }
 
     /**
@@ -556,7 +626,7 @@ public class ObservationResourceProvider implements IResourceProvider {
     @Create
     public MethodOutcome createObservation(@ResourceParam Observation observation) {
         var concept = FetchedObservations.parseCodeableConcept(observation.getCategory(), "Category");
-        if (!concept.equals(FetchedAccelerationObservations.CATEGORY)) {
+        if (concept.getCode().compareTo(FetchedAccelerationObservations.CATEGORY.getCode()) != 0) {
             throw new UnprocessableEntityException("Unsupported observation");
         }
 

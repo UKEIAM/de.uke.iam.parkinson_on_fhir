@@ -1,7 +1,6 @@
 import requests
 import unittest
-import random
-import string
+import re
 
 # The server where the REST interface run. By default, this points to the Docker host.
 SERVER = "http://172.17.0.1:50202/parkinson-fhir"
@@ -105,18 +104,12 @@ class TestGroup(unittest.TestCase):
         self.assertEqual(r.status_code, 204, msg=r.text)
 
 
-class TestFhirApi(unittest.TestCase):
-    """
-    Integration tests for the FHIR API. In general, the database must be clear with each start.
-    However, to some extend randomness is introduced for ensuring successfull runs nevertheless.
-    """
-
-    def test_config(self):
-        r = requests.get(f"{SERVER}/metadata")
-        self.assertEqual(r.status_code, 200)
-
-    def test_observation(self):
-        payload = {
+class TestObservation(unittest.TestCase):
+    def __init__(self, *kargs, **kwargs) -> None:
+        super().__init__(*kargs, **kwargs)
+        self.subject_url = ""
+        self.device_url = ""
+        self.payload = {
             "resourceType": "Observation",
             "status": "final",
             "category": {
@@ -137,67 +130,113 @@ class TestFhirApi(unittest.TestCase):
                     }
                 ]
             },
-            "effectiveDateTime": "2015-02-07T13:28:17",
-            "subject": "Patient/1",
+            "effectiveInstant": "2015-02-07T13:28:17.239+02:00",
+            "subject": {"reference": "Patient/THIS_WILL_BE_REPLACED"},
             "bodySite": {
                 "coding": [
                     {
                         "system": "Custom",
                         "code": "leftWrist",
-                        "display": "leftWrist",
+                        "display": "Left wrist",
                     }
                 ]
             },
-            "device": {
-                "type": "Device",
-                "identifier": "1",
-            },
+            "device": {"reference": "Device/THIS_WILL_BE_REPLACED"},
             "component": [
                 {
-                    "coding": {
+                    "code": {
                         "coding": [
                             {
                                 "system": "http://loinc.org",
                                 "code": "X42",
                                 "display": "Acceleration on the X axis",
                             }
-                        ]
+                        ],
                     },
                     "valueQuantity": {"value": 1.0, "unit": "m/s^2"},
                 },
                 {
-                    "coding": {
+                    "code": {
                         "coding": [
                             {
                                 "system": "http://loinc.org",
                                 "code": "X43",
                                 "display": "Acceleration on the Y axis",
                             }
-                        ]
+                        ],
                     },
                     "valueQuantity": {"value": 2.0, "unit": "m/s^2"},
                 },
                 {
-                    "coding": {
+                    "code": {
                         "coding": [
                             {
                                 "system": "http://loinc.org",
                                 "code": "X44",
                                 "display": "Acceleration on the Z axis",
                             }
-                        ]
+                        ],
                     },
                     "valueQuantity": {"value": 3.0, "unit": "m/s^2"},
                 },
             ],
         }
 
-        r = requests.post(f"{SERVER}/Observation", json=payload)
+    def setUp(self):
+        # Create the subject
+        r = requests.post(
+            f"{SERVER}/Patient",
+            json={
+                "resourceType": "Patient",
+                "active": True,
+                "identifier": {"value": "Example Patient"},
+            },
+        )
+        self.assertEqual(r.status_code, 201, msg=r.text)
+        self.subject_url = r.headers["location"]
+        self.payload["subject"] = {
+            "reference": TestObservation._extractRelativeReference(
+                r.headers["location"]
+            )
+        }
+
+        # Create the subject
+        r = requests.post(
+            f"{SERVER}/Device",
+            json={
+                "resourceType": "Device",
+                "distinctIdentifier": "Example device",
+            },
+        )
+        self.assertEqual(r.status_code, 201, msg=r.text)
+        self.device_url = r.headers["location"]
+        self.payload["device"] = {
+            "reference": TestObservation._extractRelativeReference(
+                r.headers["location"]
+            )
+        }
+
+        r = requests.post(f"{SERVER}/Observation", json=self.payload)
         self.assertEqual(r.status_code, 201, msg=r.text)
 
+    def testInsertAndDelete(self):
+        pass
+
     @staticmethod
-    def generate_unique_name(lenght: int = 7) -> str:
-        return "".join(random.choices(string.ascii_uppercase + string.digits, k=lenght))
+    def _extractRelativeReference(value: str) -> str:
+        relative_reference = re.search(r".*\/([A-Za-z]+\/.+)$", value)
+        return relative_reference.group(1)
+
+
+class TestFhirApi(unittest.TestCase):
+    """
+    Integration tests for the FHIR API. In general, the database must be clear with each start.
+    However, to some extend randomness is introduced for ensuring successfull runs nevertheless.
+    """
+
+    def test_config(self):
+        r = requests.get(f"{SERVER}/metadata")
+        self.assertEqual(r.status_code, 200)
 
 
 if __name__ == "__main__":
