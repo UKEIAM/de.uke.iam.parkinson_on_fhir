@@ -1,6 +1,8 @@
 import requests
 import unittest
 import re
+import string
+import random
 
 # The server where the REST interface run. By default, this points to the Docker host.
 SERVER = "http://172.17.0.1:50202/parkinson-fhir"
@@ -109,6 +111,7 @@ class TestObservation(unittest.TestCase):
         super().__init__(*kargs, **kwargs)
         self.subject_url = ""
         self.device_url = ""
+        self.observation_url = ""
         self.payload = {
             "resourceType": "Observation",
             "status": "final",
@@ -200,12 +203,15 @@ class TestObservation(unittest.TestCase):
             )
         }
 
-        # Create the subject
+        # Create the device with a unique name
+        device_name = "".join(
+            random.choices(string.ascii_uppercase + string.digits, k=6)
+        )
         r = requests.post(
             f"{SERVER}/Device",
             json={
                 "resourceType": "Device",
-                "distinctIdentifier": "Example device",
+                "distinctIdentifier": device_name,
             },
         )
         self.assertEqual(r.status_code, 201, msg=r.text)
@@ -218,6 +224,11 @@ class TestObservation(unittest.TestCase):
 
         r = requests.post(f"{SERVER}/Observation", json=self.payload)
         self.assertEqual(r.status_code, 201, msg=r.text)
+        self.observation_url = r.headers["location"]
+
+    def tearDown(self) -> None:
+        r = requests.delete(self.observation_url)
+        self.assertEqual(r.status_code, 204, msg=r.text)
 
     def testInsertAndDelete(self):
         pass

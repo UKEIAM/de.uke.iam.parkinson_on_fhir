@@ -1,8 +1,10 @@
 package de.uke.iam.parkinson_on_fhir.provider;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.instance.model.api.IBaseResource;
@@ -254,6 +256,86 @@ public class ObservationResourceProvider implements IResourceProvider {
             }
         }
 
+        /**
+         * Assign a unique ID to the observation of acceleration.
+         */
+        private static class MeasurementId {
+            private LocalDateTime timestamp;
+            private int subjectId;
+            private int sensorId;
+
+            private static Pattern PATTERN = Pattern
+                    .compile("A_(?<timestamp>[0-9\\-':\\.T]+)_(?<subject>[0-9]+)_(?<sensor>[0-9]+)");
+
+            public MeasurementId(LocalDateTime timestamp, int subjectId, int sensorId) {
+                this.timestamp = timestamp;
+                this.subjectId = subjectId;
+                this.sensorId = sensorId;
+            }
+
+            public MeasurementId(String serializedId) throws UnprocessableEntityException {
+                var match = PATTERN.matcher(serializedId);
+                if (!match.find()) {
+                    throw new UnprocessableEntityException(String
+                            .format("%sThe ID '%s' of the observation is malformed", Msg.code(639), serializedId));
+                }
+
+                try {
+                    this.timestamp = LocalDateTime.parse(match.group("timestamp"));
+                    this.subjectId = Integer.parseInt(match.group("subject"));
+                    this.sensorId = Integer.parseInt(match.group("sensor"));
+                } catch (DateTimeParseException | NumberFormatException e) {
+                    throw new UnprocessableEntityException(
+                            String.format("%sThe ID '%s' of the observation is malformed: %s", Msg.code(639),
+                                    serializedId, e.toString()));
+                }
+            }
+
+            /**
+             * Try to insert a specific measurement into the database.
+             * 
+             * @param connection The connection with the database.
+             * @param x          The x acceleration.
+             * @param y          The y acceleration.
+             * @param z          The z acceleration.
+             * @throws UnprocessableEntityException When the inseration fails.
+             */
+            public void insert(DSLContext connection, float x, float y, float z) throws UnprocessableEntityException {
+                try {
+                    connection.insertInto(MEASUREMENTS)
+                            .set(MEASUREMENTS.TIMESTAMP, this.timestamp)
+                            .set(MEASUREMENTS.SUBJECT, this.subjectId)
+                            .set(MEASUREMENTS.SENSOR, this.sensorId)
+                            .set(MEASUREMENTS.X, x)
+                            .set(MEASUREMENTS.Y, y)
+                            .set(MEASUREMENTS.Z, z)
+                            .execute();
+                } catch (DataAccessException e) {
+                    throw new UnprocessableEntityException(String
+                            .format("%sUnable to create sample. Is there a subject '%d' already in the database?",
+                                    Msg.code(639), subjectId));
+                }
+            }
+
+            /**
+             * Try to delete a measurement from the database.
+             * 
+             * @param connection The connection with the database.
+             * @return True, if a measurement was deleted.
+             */
+            public boolean delete(DSLContext connection) {
+                return connection.deleteFrom(MEASUREMENTS)
+                        .where(MEASUREMENTS.TIMESTAMP.eq(this.timestamp).and(
+                                MEASUREMENTS.SUBJECT.eq(this.subjectId).and(MEASUREMENTS.SENSOR.eq(this.sensorId))))
+                        .execute() == 1;
+            }
+
+            @Override
+            public String toString() {
+                return String.format("A_%s_%d_%d", timestamp.toString(), subjectId, sensorId);
+            }
+        }
+
         private Cursor<Record7<LocalDateTime, Integer, Float, Float, Float, String, String>> measurements;
 
         private static final AccelerationComponent[] ACCELERATION_COMPONENTS;
@@ -369,24 +451,19 @@ public class ObservationResourceProvider implements IResourceProvider {
                 }
             }
 
-            // Try to insert the values if they are unique
-            try {
-                connection.insertInto(MEASUREMENTS)
-                        .set(MEASUREMENTS.TIMESTAMP, timestamp)
-                        .set(MEASUREMENTS.SUBJECT, subjectId)
-                        .set(MEASUREMENTS.SENSOR, sensorId)
-                        .set(MEASUREMENTS.X, parsedValues[0])
-                        .set(MEASUREMENTS.Y, parsedValues[1])
-                        .set(MEASUREMENTS.Z, parsedValues[2])
-                        .execute();
-            } catch (DataAccessException e) {
-                throw new UnprocessableEntityException(String
-                        .format("%sUnable to create sample. Is there a subject '%d' already in the database?",
-                                Msg.code(639), subjectId));
-            }
+            // Create an virtual ID for the measurement, insert it and return it
+            var measurement = new MeasurementId(timestamp, subjectId, sensorId);
+            measurement.insert(connection, parsedValues[0], parsedValues[1], parsedValues[2]);
+            return measurement.toString();
+        }
 
-            // Create the ID
-            return String.format("A-%s-%d", timestamp.toString(), subjectId);
+        public static void delete(DSLContext connection, IdType theId) {
+            var measurementId = new MeasurementId(theId.getIdPart());
+            if (!measurementId.delete(connection)) {
+                throw new ResourceNotFoundException(
+                        String.format("%sAn observation with the ID '%d' not found.", Msg.code(634),
+                                theId.getIdPart()));
+            }
         }
 
         private static Condition buildWhere(Integer subject, LocalDateTime start, LocalDateTime end) {
@@ -635,5 +712,11 @@ public class ObservationResourceProvider implements IResourceProvider {
                 FetchedAccelerationObservations.insertObservation(this.connection, observation)));
         result.setOperationOutcome(new OperationOutcome());
         return result;
+    }
+
+    @Delete
+    public void deleteObservation(@IdParam IdType theId) {
+        // ToDo: At some point in time, we might have to support ratings, too.
+        FetchedAccelerationObservations.delete(connection, theId);
     }
 }
