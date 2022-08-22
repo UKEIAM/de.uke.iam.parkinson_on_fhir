@@ -110,6 +110,7 @@ class TestObservation(unittest.TestCase):
     def __init__(self, *kargs, **kwargs) -> None:
         super().__init__(*kargs, **kwargs)
         self.subject_url = ""
+        self.subject_reference = ""
         self.device_url = ""
         self.observation_url = ""
         self.payload = {
@@ -197,11 +198,10 @@ class TestObservation(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201, msg=r.text)
         self.subject_url = r.headers["location"]
-        self.payload["subject"] = {
-            "reference": TestObservation._extractRelativeReference(
-                r.headers["location"]
-            )
-        }
+        self.subject_reference = TestObservation._extractRelativeReference(
+            r.headers["location"]
+        )
+        self.payload["subject"] = {"reference": self.subject_reference}
 
         # Create the device with a unique name
         device_name = "".join(
@@ -232,6 +232,32 @@ class TestObservation(unittest.TestCase):
 
     def testInsertAndDelete(self):
         pass
+
+    def testGet(self):
+        r = requests.get(
+            f"{SERVER}/Observation?category=procedure&subject={self.subject_reference}&date=ge2011-01-02"
+        )
+
+        response = r.json()
+        self.assertEqual(r.status_code, 200, msg=r.text)
+        self.assertEqual(len(response["entry"]), 1)
+        for key, value in response["entry"][0]["resource"].items():
+            # We must check for the correct timestamp here - looks fine!
+            if key == "effectiveInstant":
+                self.assertEqual(value, "2015-02-07T11:28:17.239+00:00")
+                continue
+            elif key == "id":
+                continue
+
+            # Sometimes, concepts may be enclosed within lists. Ignore that.
+            if isinstance(value, list) and len(value) == 1:
+                value = value[0]
+
+            self.assertEqual(
+                self.payload[key],
+                value,
+                msg=f"Key '{key}'",
+            )
 
     @staticmethod
     def _extractRelativeReference(value: str) -> str:

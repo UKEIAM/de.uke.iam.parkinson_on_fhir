@@ -30,6 +30,7 @@ import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.api.server.IBundleProvider;
 import ca.uhn.fhir.rest.param.DateRangeParam;
+import ca.uhn.fhir.rest.param.ReferenceParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.NotImplementedOperationException;
@@ -38,7 +39,7 @@ import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
-import org.jooq.Record7;
+import org.jooq.Record8;
 import org.jooq.Record16;
 import org.jooq.TableField;
 import org.jooq.exception.DataAccessException;
@@ -223,7 +224,7 @@ public class ObservationResourceProvider implements IResourceProvider {
 
             public ObservationComponentComponent createObservationComponent(Record record) {
                 var value = new ObservationComponentComponent(this.concept);
-                value.setValue(new Quantity(record.get(this.tableEntry)));
+                value.setValue(new Quantity(record.get(this.tableEntry)).setUnit("m/s^2"));
                 return value;
             }
 
@@ -336,7 +337,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             }
         }
 
-        private Cursor<Record7<LocalDateTime, Integer, Float, Float, Float, String, String>> measurements;
+        private Cursor<Record8<LocalDateTime, Integer, Float, Float, Float, String, String, String>> measurements;
 
         private static final AccelerationComponent[] ACCELERATION_COMPONENTS;
         public static final Coding CATEGORY;
@@ -359,9 +360,11 @@ public class ObservationResourceProvider implements IResourceProvider {
 
             this.measurements = connection
                     .select(MEASUREMENTS.TIMESTAMP, MEASUREMENTS.SUBJECT, MEASUREMENTS.X, MEASUREMENTS.Y,
-                            MEASUREMENTS.Z, SENSORS.BODY_PART, SENSORS.DEVICE)
-                    .from(MEASUREMENTS).join(SENSORS)
-                    .on(MEASUREMENTS.SENSOR.eq(SENSORS.SENSOR_ID)).where(buildWhere(subject, start, end))
+                            MEASUREMENTS.Z, SENSORS.BODY_PART, SENSORS.DEVICE, BODYPARTS.DESCRIPTION)
+                    .from(MEASUREMENTS)
+                    .join(SENSORS).on(MEASUREMENTS.SENSOR.eq(SENSORS.SENSOR_ID))
+                    .join(BODYPARTS).on(BODYPARTS.NAME.eq(SENSORS.BODY_PART))
+                    .where(buildWhere(subject, start, end))
                     .fetchSize(FETCH_SIZE).fetchLazy();
         }
 
@@ -388,7 +391,9 @@ public class ObservationResourceProvider implements IResourceProvider {
                         ACCELERATION_COMPONENTS[1].createObservationComponent(sample),
                         ACCELERATION_COMPONENTS[2].createObservationComponent(sample)));
                 observation.setDevice(new Reference(new IdType("Device", sample.get(SENSORS.DEVICE))));
-                observation.setBodySite(new CodeableConcept(new Coding("Custom", body_part, body_part)));
+                observation
+                        .setBodySite(new CodeableConcept(
+                                new Coding("Custom", body_part, sample.get(BODYPARTS.DESCRIPTION))));
                 loaded_measurements.add(observation);
             }
 
@@ -663,17 +668,16 @@ public class ObservationResourceProvider implements IResourceProvider {
     @Search
     public IBundleProvider search(
             @OptionalParam(name = Observation.SP_CATEGORY) TokenParam category,
-            @OptionalParam(name = Observation.SP_SUBJECT) TokenParam subject,
+            @OptionalParam(name = Observation.SP_SUBJECT) ReferenceParam subject,
             @OptionalParam(name = Observation.SP_DATE) DateRangeParam range) {
 
         // Allow searching for subject
         Integer subject_id = null;
         if (subject != null) {
-            var raw_value = subject.getValue();
             try {
-                subject_id = Integer.parseInt(raw_value);
-            } catch (NumberFormatException e) {
-                throw new ResourceNotFoundException("Unknown Subject ID");
+                subject_id = subject.getIdPartAsLong().intValue();
+            } catch (NumberFormatException | NullPointerException e) {
+                throw new ResourceNotFoundException(String.format("Malformed subject ID: %s", subject.toString()));
             }
         }
 
@@ -696,7 +700,7 @@ public class ObservationResourceProvider implements IResourceProvider {
         } else if (category != null && category.getValue().compareTo("procedure") == 0) {
             return new FetchedAccelerationObservations(this.connection, subject_id, start, end);
         } else {
-            throw new ResourceNotFoundException("Plase specify 'exam' or 'procedure' for category");
+            throw new ResourceNotFoundException("Please specify 'exam' or 'procedure' for category");
         }
     }
 
