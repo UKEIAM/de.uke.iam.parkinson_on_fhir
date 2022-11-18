@@ -494,7 +494,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             // Try to query the sensor if it already exists
             Integer sensorId;
             try {
-                sensorId = connection.selectOne().from(SENSORS)
+                sensorId = connection.select(SENSORS.SENSOR_ID).from(SENSORS)
                         .where(SENSORS.DEVICE.eq(device), SENSORS.BODY_PART.eq(bodyPart))
                         .fetchOne(SENSORS.SENSOR_ID, Integer.class);
             } catch (DataAccessException e) {

@@ -112,7 +112,7 @@ class TestObservation(unittest.TestCase):
         self.subject_url = ""
         self.subject_reference = ""
         self.device_url = ""
-        self.observation_url = ""
+        self.observation_urls = []
         self.payload = {
             "resourceType": "Observation",
             "status": "final",
@@ -216,19 +216,27 @@ class TestObservation(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201, msg=r.text)
         self.device_url = r.headers["location"]
+
+        # Prepare and add the first payload
         self.payload["device"] = {
             "reference": TestObservation._extractRelativeReference(
                 r.headers["location"]
             )
         }
-
         r = requests.post(f"{SERVER}/Observation", json=self.payload)
         self.assertEqual(r.status_code, 201, msg=r.text)
-        self.observation_url = r.headers["location"]
+        self.observation_urls.append(r.headers["location"])
+
+        # Add a second payload
+        self.payload["effectiveInstant"] = "2010-02-07T13:28:17.239+02:00"
+        r = requests.post(f"{SERVER}/Observation", json=self.payload)
+        self.assertEqual(r.status_code, 201, msg=r.text)
+        self.observation_urls.append(r.headers["location"])
 
     def tearDown(self) -> None:
-        r = requests.delete(self.observation_url)
-        self.assertEqual(r.status_code, 204, msg=r.text)
+        for url in self.observation_urls:
+            r = requests.delete(url)
+            self.assertEqual(r.status_code, 204, msg=r.text)
 
     def testInsertAndDelete(self):
         pass
