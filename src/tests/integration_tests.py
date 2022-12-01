@@ -5,7 +5,7 @@ import string
 import random
 
 # The server where the REST interface run. By default, this points to the Docker host.
-SERVER = "http://localhost:8089/parkinson-fhir/"
+SERVER = "http://172.17.0.1:50202/parkinson-fhir"
 
 
 class TestDevice(unittest.TestCase):
