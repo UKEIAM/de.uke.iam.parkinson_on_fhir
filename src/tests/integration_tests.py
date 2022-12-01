@@ -266,7 +266,29 @@ class TestObservation(unittest.TestCase):
                 value,
                 msg=f"Key '{key}'",
             )
+    
+    def testBundle(self):
+        # Build Bundle
+        entry1 = self.payload.copy()
+        entry2 = self.payload.copy()
+        entry1["effectiveInstant"] = "2020-02-07T13:28:17.239+02:00"
+        entry1["effectiveInstant"] = "2020-03-10T13:28:17.239+02:00"
+        bundle_payload = {
+            "reference": "Bundle",
+            "type": "transaction", # transaction: 1 operation fail -> transaction fails / batch: 1 op. fail -> only the one operation fails
+            "entry": [
+                {"resource": entry1},
+                {"resource": entry2}
+            ]
+        }
 
+        # ***** NOTE *****
+        # not sure if Endpoint should be API root or /Observation
+        r = requests.post(f"{SERVER}", json=bundle_payload)
+        self.assertEqual(r.status_code, 201, msg=r.text)
+
+        # self.observation_urls.append(r.headers["location"])
+    
     @staticmethod
     def _extractRelativeReference(value: str) -> str:
         relative_reference = re.search(r".*\/([A-Za-z]+\/.+)$", value)
