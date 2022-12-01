@@ -5,7 +5,7 @@ import string
 import random
 
 # The server where the REST interface run. By default, this points to the Docker host.
-SERVER = "http://172.17.0.1:50202/parkinson-fhir"
+SERVER = "http://localhost:8089/parkinson-fhir/"
 
 
 class TestDevice(unittest.TestCase):
@@ -62,6 +62,11 @@ class TestPatient(unittest.TestCase):
 
     def testGet(self):
         r = requests.get(self.resource_url)
+        self.assertEqual(r.status_code, 200, msg=r.text)
+
+    def testGetByIdentifier(self):
+        # Get patient by identifier value
+        r = requests.get(f"{SERVER}/Patient", params={"identifier": "John Doe"})
         self.assertEqual(r.status_code, 200, msg=r.text)
 
     def testDeleteNonexisting(self):
