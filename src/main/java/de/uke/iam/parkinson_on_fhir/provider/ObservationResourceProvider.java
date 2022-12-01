@@ -6,6 +6,8 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Pattern;
 
+import javax.annotation.Nonnull;
+
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.instance.model.api.IPrimitiveType;
@@ -88,9 +90,11 @@ public class ObservationResourceProvider implements IResourceProvider {
          * @param numSamples The number of samples to be read.
          * @return The samples read.
          */
+        @Nonnull
         protected abstract List<IBaseResource> fetchNext(int numSamples);
 
         @Override
+        @Nonnull
         public List<IBaseResource> getResources(int theFromIndex, int theToIndex) {
             var numSamples = theToIndex - theFromIndex;
             if (numSamples <= 0) {
@@ -369,6 +373,7 @@ public class ObservationResourceProvider implements IResourceProvider {
         }
 
         @Override
+        @Nonnull
         protected List<IBaseResource> fetchNext(int numSamples) {
             var loaded_measurements = new ArrayList<IBaseResource>(numSamples);
             for (var sample : measurements.fetchNext(numSamples)) {
@@ -574,6 +579,7 @@ public class ObservationResourceProvider implements IResourceProvider {
         }
 
         @Override
+        @Nonnull
         protected List<IBaseResource> fetchNext(int numSamples) {
             var loaded_measurements = new ArrayList<IBaseResource>(numSamples);
             for (var sample : measurements.fetchNext(numSamples)) {
