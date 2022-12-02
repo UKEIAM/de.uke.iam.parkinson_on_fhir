@@ -64,6 +64,11 @@ class TestPatient(unittest.TestCase):
         r = requests.get(self.resource_url)
         self.assertEqual(r.status_code, 200, msg=r.text)
 
+    def testGetByIdentifier(self):
+        # Get patient by identifier value
+        r = requests.get(f"{SERVER}/Patient", params={"identifier": "John Doe"})
+        self.assertEqual(r.status_code, 200, msg=r.text)
+
     def testDeleteNonexisting(self):
         r = requests.delete(f"{SERVER}/Patient/42")
         self.assertEqual(r.status_code, 404, msg=r.text)
