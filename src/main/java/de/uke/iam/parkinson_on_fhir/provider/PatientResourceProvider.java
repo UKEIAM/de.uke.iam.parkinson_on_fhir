@@ -10,6 +10,7 @@ import org.hl7.fhir.r4.model.OperationOutcome;
 import ca.uhn.fhir.i18n.Msg;
 import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.param.StringParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceVersionConflictException;
@@ -76,6 +77,18 @@ public class PatientResourceProvider implements IResourceProvider {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Search a patient given its identifier.
+     * 
+     * @param identifier The identifier of the patient.
+     * @return Returns the patients matching the identifier.
+     */
+    @Search()
+    public List<Patient> searchByIdentifier(@RequiredParam(name = Patient.SP_IDENTIFIER) StringParam identifier) {
+        String valueToMatch = identifier.getValue();
+        return this.loadPatients(SUBJECTS.DESCRIPTION.eq(valueToMatch));
     }
 
     private List<Patient> loadPatients(Condition where) {
