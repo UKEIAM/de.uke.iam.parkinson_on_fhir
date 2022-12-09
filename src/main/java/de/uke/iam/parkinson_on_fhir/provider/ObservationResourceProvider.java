@@ -15,9 +15,11 @@ import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.Quantity;
 import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
 import org.hl7.fhir.r4.model.Observation.ObservationComponentComponent;
 import org.hl7.fhir.r4.model.Observation.ObservationStatus;
 import org.hl7.fhir.r4.model.Annotation;
+import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.r4.model.IdType;
@@ -728,5 +730,38 @@ public class ObservationResourceProvider implements IResourceProvider {
     public void deleteObservation(@IdParam IdType theId) {
         // ToDo: At some point in time, we might have to support ratings, too.
         FetchedAccelerationObservations.delete(connection, theId);
+    }
+
+    @Transaction
+    public Bundle transaction(@TransactionParam Bundle observations) {
+        // We only support a small subset
+        if (observations.getType() != Bundle.BundleType.BATCH) {
+            throw new UnprocessableEntityException("Only resources of type 'Outcome' are supported");
+        }
+
+        Bundle result = new Bundle();
+        for (BundleEntryComponent nextObservation : observations.getEntry()) {
+            // Check if the resource is really an observation
+            var resource = nextObservation.getResource();
+            if (resource == null || !(resource instanceof Observation)) {
+                throw new UnprocessableEntityException("Only resources of type 'Outcome' are supported");
+            }
+
+            var response = new Bundle.BundleEntryResponseComponent();
+            try {
+                // Try to create the observation ...
+                var outcome = this.createObservation((Observation) resource);
+                response.setLocation(outcome.getId().toString());
+                response.setStatus("201 Created");
+            } catch (UnprocessableEntityException ex) {
+                // ... and fail otherwise.
+                response.setStatus(String.format("400 Bad Request ('%s')", ex.toString()));
+            }
+
+            // Add the resource identifier
+            result.addEntry(new BundleEntryComponent().setResponse(response));
+        }
+
+        return result;
     }
 }
