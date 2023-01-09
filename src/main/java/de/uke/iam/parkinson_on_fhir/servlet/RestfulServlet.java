@@ -127,5 +127,16 @@ public class RestfulServlet extends RestfulServer {
 		pp.setDefaultPageSize(50);
 		pp.setMaximumPageSize(100);
 		setPagingProvider(pp);
+
+		/*
+		 * Add optional authorization
+		 */
+		AuthorizationHandler authorization = AuthorizationHandler.loadFromContext();
+		if (authorization != null) {
+			logger.info("HTTP authorization enabled");
+			registerInterceptor(authorization);
+		} else {
+			logger.warn("Server is running without HTTP authorization");
+		}
 	}
 }

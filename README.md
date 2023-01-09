@@ -27,3 +27,6 @@ Afterward, simply run `docker-compose up --build` (the `--build` is only require
 
 ### For users
 The server should be deployed as a Docker image. To create the container, navigate into this folder and call `docker build -t parkinson_on_fhir:<TAG> --build-arg MAVEN_USER=<YOUR USERNAME FOR NEXUS> --build-arg MAVEN_PASSWORD=<YOUR USERNAME FOR NEXUS> --build-arg POSTGRES_SERVER=<...> --build-arg POSTGRES_DATABASE=<...> --build-arg POSTGRES_USER=<...> --build-arg POSTGRES_PASSWORD=<...> .`. Once build, use `docker run -p 127.0.0.1:<LOCAL PORT like 50202>:8080 parkinson_fhir:<TAG>` to access the server by HTTP locally, for example at port 50202. If the server is running at a foreign host, you may call want to call `ssh <YOUR USERNAME>@iam-docker -N -L <THE LOCAL PORT LIKE 8080>:127.0.0.1:<CHOOSEN PORT LIKE 50202>`. Typing in `http://localhost:8080/parkinson-fhir/` will than lead to the website.
+
+#### Adding HTTP authorization
+By specifying the build arg *AUTHORIZATION* with something like "user:password", HTTP authorization is enabled.

@@ -9,6 +9,7 @@ ARG POSTGRES_SERVER
 ARG POSTGRES_DATABASE
 ARG POSTGRES_USER
 ARG POSTGRES_PASSWORD
+ARG AUTHORIZATION
 ARG SKIP_CODE_GENERATION=false
 
 # Define the credential used for the NEXUS
@@ -20,6 +21,7 @@ ENV POSTGRES_SERVER=$POSTGRES_SERVER
 ENV POSTGRES_DATABASE=$POSTGRES_DATABASE
 ENV POSTGRES_USER=$POSTGRES_USER
 ENV POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+ENV AUTHORIZATION=$AUTHORIZATION
 
 WORKDIR /parkinson_on_fhir/
 
@@ -42,6 +44,7 @@ ARG POSTGRES_SERVER
 ARG POSTGRES_DATABASE
 ARG POSTGRES_USER
 ARG POSTGRES_PASSWORD
+ARG AUTHORIZATION
 ARG SKIP_CODE_GENERATION=false
 
 COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATALINA_HOME/webapps/parkinson-fhir.war
@@ -53,4 +56,4 @@ COPY --from=MarvenWarBuilder /parkinson_on_fhir/target/parkinson-fhir.war $CATAL
 # COPY config/usr/local/tomcat/webapps/manager/META-INF/context.xml $CATALINA_HOME/webapps/manager/META-INF/context.xml
 
 # Store the credentials to allow access to the database
-RUN printf '%s\n' "de.uke.iam.parkinson_on_fhir.postgres_server=$POSTGRES_SERVER" "de.uke.iam.parkinson_on_fhir.database=$POSTGRES_DATABASE" "de.uke.iam.parkinson_on_fhir.user=$POSTGRES_USER" "de.uke.iam.parkinson_on_fhir.password=$POSTGRES_PASSWORD" "de.uke.iam.parkinson_on_fhir.code_generation_skipped=$SKIP_CODE_GENERATION" >> $CATALINA_HOME/conf/catalina.properties
+RUN printf '%s\n' "de.uke.iam.parkinson_on_fhir.postgres_server=$POSTGRES_SERVER" "de.uke.iam.parkinson_on_fhir.database=$POSTGRES_DATABASE" "de.uke.iam.parkinson_on_fhir.user=$POSTGRES_USER" "de.uke.iam.parkinson_on_fhir.password=$POSTGRES_PASSWORD" "de.uke.iam.parkinson_on_fhir.code_generation_skipped=$SKIP_CODE_GENERATION" "de.uke.iam.parkinson_on_fhir.authorization=$AUTHORIZATION" >> $CATALINA_HOME/conf/catalina.properties
