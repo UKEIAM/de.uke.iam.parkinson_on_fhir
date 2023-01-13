@@ -43,7 +43,7 @@ public class AuthorizationHandler extends AuthorizationInterceptor {
 
     public static AuthorizationHandler loadFromContext() {
         var authorization = System.getProperty("de.uke.iam.parkinson_on_fhir.authorization");
-        if (authorization == null) {
+        if (authorization == null || authorization.isEmpty()) {
             return null;
         }
         return new AuthorizationHandler(authorization);
