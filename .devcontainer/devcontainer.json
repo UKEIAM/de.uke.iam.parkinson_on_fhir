@@ -1,20 +1,20 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/java
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/java
 {
 	"name": "Java",
-	"build": {
-		"dockerfile": "Dockerfile",
-		"args": {
-			// Update the VARIANT arg to pick a Java version: 11, 17
-			// Append -bullseye or -buster to pin to an OS version.
-			// Use the -bullseye variants on local arm64/Apple Silicon.
-			"VARIANT": "11-bullseye",
-			// Options
-			"INSTALL_MAVEN": "true",
-			"INSTALL_GRADLE": "false",
-			"NODE_VERSION": "none"
+	"image": "mcr.microsoft.com/devcontainers/java:11",
+	"features": {
+		"ghcr.io/devcontainers/features/java:1": {
+			"version": "none",
+			"installMaven": "true",
+			"installGradle": "false"
 		}
 	},
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "sudo apt update && sudo apt -y install --no-install-recommends python3-pip && sudo pip3 --disable-pip-version-check --no-cache-dir install requests black",
+	// Configure tool-specific properties.
 	"customizations": {
 		// Configure properties specific to VS Code.
 		"vscode": {
@@ -40,16 +40,11 @@
 			},
 			// Add the IDs of extensions you want installed when the container is created.
 			"extensions": [
-				"vscjava.vscode-java-pack",
-				"ms-python.python"
+				"ms-python.python",
+				"vscjava.vscode-java-pack"
 			]
 		}
 	},
-	"remoteUser": "vscode",
-	"features": {
-		"git": "os-provided"
-	},
-	// Bind the local settings into Marven
 	"mounts": [
 		"source=${localWorkspaceFolder}/settings.xml,target=/home/vscode/.m2/settings.xml,type=bind,consistency=cached"
 	],
