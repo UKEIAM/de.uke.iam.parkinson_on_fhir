@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
-import regex as re
+import re
 import multiprocessing
-from typing import Sequence
+from typing import Sequence, Tuple
 import random
 import time
+import csv
 
 import requests
 
@@ -17,6 +18,7 @@ def __create_request(input) -> float:
 @dataclass
 class Benchmark:
     server: str = "http://172.17.0.1:50202/parkinson-fhir"
+    num_worker: int = 2
     subject_reference: str = field(init=False)
     device_reference: str = field(init=False)
 
@@ -47,8 +49,8 @@ class Benchmark:
             self.device_reference = Benchmark._extractRelativeReference(r.headers["location"])
         except:
             raise ValueError("Unable to create example subject")
-        
-    def benchmark(self, num_requests: int, num_worker: int) -> Sequence[float]:
+
+    def create_request_data(self, num_requests: int) -> Sequence[Tuple[str, dict]]:
         rng = random.Random()
         request_values = [
             (self.server, {
@@ -73,7 +75,7 @@ class Benchmark:
                     ]
                 },
                 # FIXME: Need to be different for each call.
-                "effectiveInstant": "2015-02-07T13:28:17.239+02:00",
+                "effectiveInstant": f"{i}-02-07T13:28:17.239+02:00",
                 "subject": {"reference": self.subject_reference},
                 "bodySite": {
                     "coding": [
@@ -124,11 +126,11 @@ class Benchmark:
                     },
                 ],
             })
-            for _ in range(num_requests)
+            for i in range(num_requests)
         ]
 
-        with multiprocessing.Pool(num_worker) as p:
-            return p.map(__create_request, request_values)
+        return request_values
+        
 
 
     @staticmethod
@@ -137,5 +139,16 @@ class Benchmark:
         return relative_reference.group(1)
 
 if __name__ == "__main__":
-    # TODO
-    pass
+    # benchmark specs
+    num_worker = 6; num_requests = 10000
+    benchmark = Benchmark(num_worker = num_worker)
+    request_values = benchmark.create_request_data(num_requests=num_requests)
+    # perform benchmark
+    with multiprocessing.Pool(benchmark.num_worker) as p:
+            timings = p.map(__create_request, request_values)
+    # write out results
+    f_name = f"src/evaluation/benchmarks/benchmark_{num_worker}_{num_requests}.csv"
+    with open(f_name, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows([[timing] for timing in timings])
+
