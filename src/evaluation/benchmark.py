@@ -5,6 +5,7 @@ from typing import Sequence, Tuple
 import random
 import time
 import csv
+import datetime
 
 import requests
 
@@ -21,6 +22,7 @@ class Benchmark:
     num_worker: int = 2
     subject_reference: str = field(init=False)
     device_reference: str = field(init=False)
+    reference_date: datetime = datetime.datetime.fromisoformat("2015-02-07T13:28:17.239+02:00")
 
     def __post_init__(self):
         try:
@@ -32,6 +34,7 @@ class Benchmark:
                     "identifier": {"value": "Example Patient"},
                 },
             )
+            #print(f"{r}, text: {r.text}, content: {r.content}, code: {r.status_code}")
             assert r.status_code == 201
             self.subject_reference = Benchmark._extractRelativeReference(r.headers["location"])
         except:
@@ -45,10 +48,16 @@ class Benchmark:
                     "distinctIdentifier": "Example device",
                 },
             )
+            #print(f"{r}, text: {r.text}, content: {r.content}, code: {r.status_code}")
             assert r.status_code == 201
             self.device_reference = Benchmark._extractRelativeReference(r.headers["location"])
         except:
             raise ValueError("Unable to create example subject")
+
+    def create_new_data_by_adding_seconds(self, seconds: int) -> str:
+        new_date = self.reference_date + datetime.timedelta(0,seconds)
+        return new_date.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+
 
     def create_request_data(self, num_requests: int) -> Sequence[Tuple[str, dict]]:
         rng = random.Random()
@@ -74,8 +83,7 @@ class Benchmark:
                         }
                     ]
                 },
-                # FIXME: Need to be different for each call.
-                "effectiveInstant": f"{i}-02-07T13:28:17.239+02:00",
+                "effectiveInstant": self.create_new_data_by_adding_seconds(i),
                 "subject": {"reference": self.subject_reference},
                 "bodySite": {
                     "coding": [
@@ -141,6 +149,7 @@ class Benchmark:
 if __name__ == "__main__":
     # benchmark specs
     num_worker = 6; num_requests = 10000
+    hapi_server = "http://172.17.0.1:50505/fhir"
     benchmark = Benchmark(num_worker = num_worker)
     request_values = benchmark.create_request_data(num_requests=num_requests)
     # perform benchmark
@@ -148,7 +157,7 @@ if __name__ == "__main__":
             timings = p.map(__create_request, request_values)
     # write out results
     f_name = f"src/evaluation/benchmarks/benchmark_{num_worker}_{num_requests}.csv"
-    with open(f_name, "w", newline="") as f:
+    with open(f_name, "w+", newline="") as f:
         writer = csv.writer(f)
         writer.writerows([[timing] for timing in timings])
 
