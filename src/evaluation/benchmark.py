@@ -14,7 +14,7 @@ def __create_request(input) -> float:
     start = time.perf_counter()
     r = requests.post(f"{server}/Observation", json=payload)
     duration = time.perf_counter() - start
-    return duration if r.status_code != 201 else float('nan')
+    return duration if r.status_code in range(200,300) else float('nan')
 
 @dataclass
 class Benchmark:
@@ -22,7 +22,7 @@ class Benchmark:
     num_worker: int = 2
     subject_reference: str = field(init=False)
     device_reference: str = field(init=False)
-    reference_date: datetime = datetime.datetime.fromisoformat("2015-02-07T13:28:17.239+02:00")
+    reference_date: str = datetime.datetime.fromisoformat("2015-02-07T13:28:17.239+02:00")
 
     def __post_init__(self):
         try:
@@ -65,7 +65,7 @@ class Benchmark:
             (self.server, {
                 "resourceType": "Observation",
                 "status": "final",
-                "category": {
+                "category": [{
                     "coding": [
                         {
                             "system": "http://terminology.hl7.org/CodeSystem/observation-category",
@@ -73,7 +73,7 @@ class Benchmark:
                             "display": "Procedure",
                         }
                     ]
-                },
+                }],
                 "code": {
                     "coding": [
                         {
@@ -150,13 +150,13 @@ if __name__ == "__main__":
     # benchmark specs
     num_worker = 6; num_requests = 10000
     hapi_server = "http://172.17.0.1:50505/fhir"
-    benchmark = Benchmark(num_worker = num_worker)
+    benchmark = Benchmark(server= hapi_server,num_worker = num_worker)
     request_values = benchmark.create_request_data(num_requests=num_requests)
     # perform benchmark
     with multiprocessing.Pool(benchmark.num_worker) as p:
             timings = p.map(__create_request, request_values)
     # write out results
-    f_name = f"src/evaluation/benchmarks/benchmark_{num_worker}_{num_requests}.csv"
+    f_name = f"src/evaluation/benchmarks/benchmark_HAPI_{num_worker}_{num_requests}.csv"
     with open(f_name, "w+", newline="") as f:
         writer = csv.writer(f)
         writer.writerows([[timing] for timing in timings])
