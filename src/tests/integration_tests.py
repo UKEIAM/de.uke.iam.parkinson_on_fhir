@@ -121,15 +121,17 @@ class TestObservation(unittest.TestCase):
         self.payload = {
             "resourceType": "Observation",
             "status": "final",
-            "category": {
-                "coding": [
-                    {
-                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-                        "code": "procedure",
-                        "display": "Procedure",
-                    }
-                ]
-            },
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "procedure",
+                            "display": "Procedure",
+                        }
+                    ]
+                }
+            ],
             "code": {
                 "coding": [
                     {
@@ -262,16 +264,12 @@ class TestObservation(unittest.TestCase):
             elif key == "id":
                 continue
 
-            # Sometimes, concepts may be enclosed within lists. Ignore that.
-            if isinstance(value, list) and len(value) == 1:
-                value = value[0]
-
             self.assertEqual(
                 self.payload[key],
                 value,
                 msg=f"Key '{key}'",
             )
-    
+
     def testBundle(self):
         # Build Bundle
         entry1 = self.payload.copy()
@@ -281,10 +279,7 @@ class TestObservation(unittest.TestCase):
         bundle_payload = {
             "resourceType": "Bundle",
             "type": "batch",
-            "entry": [
-                {"resource": entry1},
-                {"resource": entry2}
-            ]
+            "entry": [{"resource": entry1}, {"resource": entry2}],
         }
 
         r = requests.post(f"{SERVER}", json=bundle_payload)
