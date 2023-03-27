@@ -18,7 +18,7 @@ def __create_request(input) -> float:
 
 @dataclass
 class Benchmark:
-    server: str = "http://172.17.0.1:50202/parkinson-fhir"
+    server: str = "http://172.17.0.1:50506/parkinson-fhir"
     num_worker: int = 2
     subject_reference: str = field(init=False)
     device_reference: str = field(init=False)
@@ -148,15 +148,21 @@ class Benchmark:
 
 if __name__ == "__main__":
     # benchmark specs
-    num_worker = 6; num_requests = 10000
+    num_worker = 4; num_requests = 100000
     hapi_server = "http://172.17.0.1:50505/fhir"
-    benchmark = Benchmark(server= hapi_server,num_worker = num_worker)
+    hapi = True
+    if hapi:
+        benchmark = Benchmark(server=hapi_server, num_worker = num_worker)
+        f_name = f"src/evaluation/benchmarks/benchmark_HAPI_{num_worker}_{num_requests}.csv"
+    else:
+        benchmark = Benchmark(num_worker = num_worker)
+        f_name = f"src/evaluation/benchmarks/benchmark_{num_worker}_{num_requests}.csv"
     request_values = benchmark.create_request_data(num_requests=num_requests)
     # perform benchmark
     with multiprocessing.Pool(benchmark.num_worker) as p:
             timings = p.map(__create_request, request_values)
     # write out results
-    f_name = f"src/evaluation/benchmarks/benchmark_HAPI_{num_worker}_{num_requests}.csv"
+    
     with open(f_name, "w+", newline="") as f:
         writer = csv.writer(f)
         writer.writerows([[timing] for timing in timings])
