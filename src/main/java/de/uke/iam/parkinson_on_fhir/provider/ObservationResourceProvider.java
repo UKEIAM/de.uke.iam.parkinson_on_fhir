@@ -503,6 +503,7 @@ public class ObservationResourceProvider implements IResourceProvider {
             try {
                 sensorId = connection.select(SENSORS.SENSOR_ID).from(SENSORS)
                         .where(SENSORS.DEVICE.eq(device), SENSORS.BODY_PART.eq(bodyPart))
+                        .limit(1) // We might enforce uniqueness at the level of the schema
                         .fetchOne(SENSORS.SENSOR_ID, Integer.class);
             } catch (DataAccessException e) {
                 throw new UnprocessableEntityException(
