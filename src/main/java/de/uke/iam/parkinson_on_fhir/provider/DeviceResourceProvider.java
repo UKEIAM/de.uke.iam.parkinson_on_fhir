@@ -3,6 +3,8 @@ package de.uke.iam.parkinson_on_fhir.provider;
 import java.util.*;
 
 import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Device.DeviceDeviceNameComponent;
+import org.hl7.fhir.r4.model.Device.DeviceNameType;
 
 import ca.uhn.fhir.i18n.Msg;
 import ca.uhn.fhir.rest.annotation.*;
@@ -74,8 +76,15 @@ public class DeviceResourceProvider implements IResourceProvider {
                 .where(where)
                 .fetch()) {
             var device = new Device();
+            // Add the description as friendly name
+            var names = new ArrayList<DeviceDeviceNameComponent>();
+            names.add(
+                    new DeviceDeviceNameComponent().setName(record.get(DEVICES.DESCRIPTION))
+                            .setType(DeviceNameType.USERFRIENDLYNAME));
+
             device.setId(record.get(DEVICES.DEVICE));
-            device.setDistinctIdentifier(record.get(DEVICES.DESCRIPTION));
+            device.setDistinctIdentifier(record.get(DEVICES.DEVICE));
+            device.setDeviceName(names);
             devices.add(device);
         }
         return devices;
@@ -89,10 +98,24 @@ public class DeviceResourceProvider implements IResourceProvider {
                     Msg.code(639) + "An distinct identifier is required for description");
         }
 
+        // Search the user-friendly device name or fall back to the identifier
+        String deviceName = null;
+        var deviceNames = device.getDeviceName();
+        for (var deviceNameRaw : (deviceNames != null ? deviceNames
+                : new java.util.ArrayList<DeviceDeviceNameComponent>())) {
+            if (deviceNameRaw.getType() == DeviceNameType.USERFRIENDLYNAME) {
+                deviceName = deviceNameRaw.getName();
+                break;
+            }
+        }
+        if (deviceName == null || deviceName.isBlank()) {
+            deviceName = deviceDescription;
+        }
+
         // Try to insert the device into the database
         try {
             if (this.connection.insertInto(DEVICES).set(DEVICES.DEVICE, deviceDescription)
-                    .set(DEVICES.DESCRIPTION, deviceDescription).execute() != 1) {
+                    .set(DEVICES.DESCRIPTION, deviceName).execute() != 1) {
                 throw new DataAccessException("Insert failed");
             }
         } catch (DataAccessException e) {
