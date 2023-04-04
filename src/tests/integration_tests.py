@@ -193,6 +193,16 @@ class TestObservation(unittest.TestCase):
             ],
         }
 
+        # Create the device with a unique name
+        device_name = "".join(
+            random.choices(string.ascii_uppercase + string.digits, k=6)
+        )
+        self.device_payload = {
+            "resourceType": "Device",
+            "distinctIdentifier": device_name,
+            "deviceName": [{"name": "iPhone", "type": "user-friendly-name"}],
+        }
+
     def setUp(self):
         # Create the subject
         r = requests.post(
@@ -211,15 +221,9 @@ class TestObservation(unittest.TestCase):
         self.payload["subject"] = {"reference": self.subject_reference}
 
         # Create the device with a unique name
-        device_name = "".join(
-            random.choices(string.ascii_uppercase + string.digits, k=6)
-        )
         r = requests.post(
             f"{SERVER}/Device",
-            json={
-                "resourceType": "Device",
-                "distinctIdentifier": device_name,
-            },
+            json=self.device_payload,
         )
         self.assertEqual(r.status_code, 201, msg=r.text)
         self.device_url = r.headers["location"]
@@ -269,6 +273,33 @@ class TestObservation(unittest.TestCase):
                 value,
                 msg=f"Key '{key}'",
             )
+
+    def testGetDevice(self):
+        r = requests.get(f"{SERVER}/Device")
+
+        response = r.json()
+        self.assertEqual(r.status_code, 200, msg=r.text)
+
+        inserted_device_found = False
+        for entry in response["entry"]:
+            if (
+                entry["resource"]["distinctIdentifier"]
+                != self.device_payload["distinctIdentifier"]
+            ):
+                continue
+
+            # We ensure that the device was found without explicit searching
+            inserted_device_found = True
+
+            # Compare the send payload with the recieved one
+            for key, value in self.device_payload.items():
+                self.assertEqual(
+                    value,
+                    entry["resource"][key],
+                    msg=f"Key '{key}'",
+                )
+
+        self.assertTrue(inserted_device_found, "Device not found")
 
     def testBundle(self):
         # Build Bundle
